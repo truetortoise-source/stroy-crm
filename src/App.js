@@ -44,7 +44,7 @@ export default function App() {
       <div style={{ background: S.panel, borderBottom: `1px solid ${S.border}`, padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
           <div style={{ fontSize: 11, color: S.muted, letterSpacing: '1px', textTransform: 'uppercase' }}>CRM</div>
-          <div style={{ fontSize: 18, fontWeight: 800, color: S.text }}>🏗 СтройКонтроль</div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: S.text }}>🏗 БГ Инжиниринг</div>
         </div>
         <div style={{ fontSize: 12, color: S.green }}>● Подключено</div>
       </div>
