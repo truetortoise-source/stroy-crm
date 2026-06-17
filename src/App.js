@@ -834,31 +834,40 @@ function WorktimeTab({ objects, employees }) {
     const { default: jsPDF } = await import('jspdf');
     const { default: autoTable } = await import('jspdf-autotable');
 
+    // Загружаем кириллический шрифт
+    const fontUrl = 'https://cdn.jsdelivr.net/npm/@fontsource/roboto@5.0.8/files/roboto-cyrillic-400-normal.woff2';
+    let fontBase64 = null;
+    try {
+      const resp = await fetch(fontUrl);
+      const buf = await resp.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      let binary = '';
+      for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+      fontBase64 = btoa(binary);
+    } catch(e) { console.warn('Font load failed, using fallback'); }
+
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
 
-    // Шрифт — используем встроенный helvetica, кириллицу транслитерируем
+    if (fontBase64) {
+      doc.addFileToVFS('Roboto-normal.woff2', fontBase64);
+      doc.addFont('Roboto-normal.woff2', 'Roboto', 'normal');
+      doc.setFont('Roboto');
+    }
+
     const monthLabel = months.find(m => m.year === selectedMonth.year && m.month === selectedMonth.month)?.label || '';
 
-    // Заголовок
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.text('BG Inzhiniring — Tabel za ' + translitMonth(monthLabel), 14, 15);
+    doc.setFontSize(13);
+    doc.text('БГ Инжиниринг — Табель за ' + monthLabel, 14, 15);
 
-    // Получаем дни месяца
     const daysInMonth = new Date(selectedMonth.year, selectedMonth.month + 1, 0).getDate();
     const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
-    // Определяем кого выводить
     const selectedEmps = filter.employee_ids.length > 0
       ? employees.filter(e => filter.employee_ids.includes(e.id))
-      : employees.filter(e => {
-          return filtered.some(f => f.employee_id === e.id);
-        });
+      : employees.filter(e => filtered.some(f => f.employee_id === e.id));
 
-    // Строим строки таблицы
     const rows = [];
     selectedEmps.forEach(emp => {
-      // Группируем по объектам
       const empEntries = filtered.filter(e => e.employee_id === emp.id);
       const empObjects = [...new Set(empEntries.map(e => e.object_id))];
 
@@ -868,77 +877,68 @@ function WorktimeTab({ objects, employees }) {
         const totalPay = objEntries.filter(e => e.status === 'worked').reduce((s, e) => s + (e.rate || 0), 0);
 
         const row = [
-          objIdx === 0 ? translit(emp.name) : '',
-          translit(objName(objId)),
+          objIdx === 0 ? emp.name : '',
+          objName(objId),
         ];
 
         days.forEach(d => {
           const dateStr = `${selectedMonth.year}-${String(selectedMonth.month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
           const entry = objEntries.find(e => e.date === dateStr);
           if (!entry) row.push('');
-          else if (entry.status === 'worked') row.push('R');
-          else if (entry.status === 'sick') row.push('B');
-          else if (entry.status === 'vacation') row.push('O');
+          else if (entry.status === 'worked') row.push('Р');
+          else if (entry.status === 'sick') row.push('Б');
+          else if (entry.status === 'vacation') row.push('О');
           else if (entry.status === 'absent') row.push('П');
           else row.push('');
         });
 
         row.push(workedDays.toString());
-        row.push(fmt(totalPay) + ' R');
+        row.push(fmt(totalPay) + ' ₽');
         rows.push(row);
       });
 
       if (empObjects.length === 0) {
-        const row = [translit(emp.name), '—', ...days.map(() => ''), '0', '0 R'];
+        const row = [emp.name, '—', ...days.map(() => ''), '0', '0 ₽'];
         rows.push(row);
       }
     });
 
-    // Итого
-    const totalRow = ['ИТОГО', '', ...days.map(() => ''), '', fmt(totalFOT) + ' R'];
+    const totalRow = ['ИТОГО', '', ...days.map(() => ''), '', fmt(totalFOT) + ' ₽'];
     rows.push(totalRow);
 
-    const head = [['FIO', 'Obekt', ...days.map(d => String(d)), 'Dn', 'Summa']];
+    const head = [['ФИО', 'Объект', ...days.map(d => String(d)), 'Дн', 'Сумма']];
+
+    const fontName = fontBase64 ? 'Roboto' : 'helvetica';
 
     autoTable(doc, {
       head,
       body: rows,
       startY: 22,
       theme: 'grid',
-      styles: { fontSize: 6.5, cellPadding: 1.2, halign: 'center' },
-      headStyles: { fillColor: [22, 27, 34], textColor: [230, 237, 243], fontStyle: 'bold', fontSize: 7 },
+      styles: { fontSize: 6.5, cellPadding: 1.2, halign: 'center', font: fontName },
+      headStyles: { fillColor: [22, 27, 34], textColor: [230, 237, 243], fontStyle: 'normal', fontSize: 7, font: fontName },
       columnStyles: {
-        0: { halign: 'left', cellWidth: 28 },
-        1: { halign: 'left', cellWidth: 24 },
+        0: { halign: 'left', cellWidth: 30 },
+        1: { halign: 'left', cellWidth: 26 },
         [days.length + 2]: { cellWidth: 8 },
-        [days.length + 3]: { cellWidth: 20 },
+        [days.length + 3]: { cellWidth: 22 },
       },
       didParseCell: (data) => {
-        if (data.cell.raw === 'R') { data.cell.styles.fillColor = [63, 185, 80]; data.cell.styles.textColor = [255,255,255]; }
-        else if (data.cell.raw === 'B') { data.cell.styles.fillColor = [88, 166, 255]; data.cell.styles.textColor = [255,255,255]; }
-        else if (data.cell.raw === 'O') { data.cell.styles.fillColor = [227, 179, 65]; data.cell.styles.textColor = [255,255,255]; }
+        if (data.cell.raw === 'Р') { data.cell.styles.fillColor = [63, 185, 80]; data.cell.styles.textColor = [255,255,255]; }
+        else if (data.cell.raw === 'Б') { data.cell.styles.fillColor = [88, 166, 255]; data.cell.styles.textColor = [255,255,255]; }
+        else if (data.cell.raw === 'О') { data.cell.styles.fillColor = [227, 179, 65]; data.cell.styles.textColor = [255,255,255]; }
         else if (data.cell.raw === 'П') { data.cell.styles.fillColor = [247, 129, 102]; data.cell.styles.textColor = [255,255,255]; }
         if (data.row.index === rows.length - 1) {
-          data.cell.styles.fontStyle = 'bold';
           data.cell.styles.fillColor = [22, 27, 34];
           data.cell.styles.textColor = [227, 179, 65];
+          data.cell.styles.font = fontName;
         }
       },
-      foot: [['R = rabotal', 'B = bolnichniy', 'O = otpusk', 'П = progul']],
-      footStyles: { fontSize: 6, fillColor: [13, 17, 23], textColor: [139, 148, 158] },
+      foot: [['Р = работал', 'Б = больничный', 'О = отпуск', 'П = прогул']],
+      footStyles: { fontSize: 6, fillColor: [13, 17, 23], textColor: [139, 148, 158], font: fontName },
     });
 
     doc.save(`tabel_${selectedMonth.year}_${String(selectedMonth.month + 1).padStart(2, '0')}.pdf`);
-  }
-
-  function translit(str) {
-    if (!str) return '';
-    const map = { 'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'zh','з':'z','и':'i','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'kh','ц':'ts','ч':'ch','ш':'sh','щ':'sch','ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya' };
-    return str.split('').map(c => map[c.toLowerCase()] ? (c === c.toUpperCase() ? map[c.toLowerCase()].charAt(0).toUpperCase() + map[c.toLowerCase()].slice(1) : map[c.toLowerCase()]) : c).join('');
-  }
-
-  function translitMonth(str) {
-    return translit(str);
   }
 
   return (
