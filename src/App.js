@@ -251,7 +251,7 @@ function ObjectsTab({ objects, onRefresh }) {
 function MovementsTab({ objects }) {
   const [movements, setMovements] = useState([]);
   const [showForm, setShowForm] = useState(false);
-  const [filter, setFilter] = useState({ from: '', to: '', type: '' });
+  const [filter, setFilter] = useState({ from: '', to: '', type: '', from_date: '', to_date: '' });
   const [uploading, setUploading] = useState(false);
   const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 10), from_object_id: '', to_object_id: '', type: 'material', note: '', author: '', file_url: '' });
 
@@ -304,6 +304,10 @@ function MovementsTab({ objects }) {
           <option value='material'>Материал</option>
           <option value='tool'>Инструмент</option>
         </select>
+          <input type='date' value={filter.from_date} onChange={e => setFilter({ ...filter, from_date: e.target.value })}
+          style={{ background: S.panel, border: `1px solid ${S.border}`, color: S.muted, borderRadius: 8, padding: '8px 12px', fontSize: 12 }} />
+        <input type='date' value={filter.to_date} onChange={e => setFilter({ ...filter, to_date: e.target.value })}
+          style={{ background: S.panel, border: `1px solid ${S.border}`, color: S.muted, borderRadius: 8, padding: '8px 12px', fontSize: 12 }} />
       </div>
 
       {showForm && (
