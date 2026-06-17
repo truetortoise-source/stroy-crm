@@ -778,33 +778,40 @@ function ObjectTimesheet({ object, employees }) {
 
 // ─── РАБОЧЕЕ ВРЕМЯ (сводка) ────────────────────────────────────────────────────
 function WorktimeTab({ objects, employees }) {
-  const today = new Date().toISOString().slice(0, 10);
-  const [filter, setFilter] = useState({ from_date: today, to_date: today, employee_ids: [] });
+  const today = new Date();
+  const [selectedMonth, setSelectedMonth] = useState({ year: today.getFullYear(), month: today.getMonth() });
+  const [filter, setFilter] = useState({ employee_ids: [] });
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => { fetchEntries(); }, [filter.from_date, filter.to_date, filter.employee_ids]);
+  // Генерируем последние 12 месяцев
+  const months = [];
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+    months.push({ year: d.getFullYear(), month: d.getMonth(), label: d.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }) });
+  }
+
+  const fromDate = new Date(selectedMonth.year, selectedMonth.month, 1).toISOString().slice(0, 10);
+  const toDate = new Date(selectedMonth.year, selectedMonth.month + 1, 0).toISOString().slice(0, 10);
+
+  useEffect(() => { fetchEntries(); }, [selectedMonth, filter.employee_ids]);
 
   async function fetchEntries() {
     setLoading(true);
-    let q = supabase.from('object_timesheet').select('*')
-      .gte('date', filter.from_date)
-      .lte('date', filter.to_date)
-      .order('date', { ascending: false });
-    const { data } = await q;
+    const { data } = await supabase.from('object_timesheet').select('*')
+      .gte('date', fromDate).lte('date', toDate).order('date');
     setEntries(data || []);
     setLoading(false);
   }
 
   const objName = id => objects.find(o => o.id === id)?.name || '—';
   const empName = id => employees.find(e => e.id === id)?.name || id;
+  const fmt = v => new Intl.NumberFormat('ru-RU').format(v);
 
-  // Фильтр по выбранным сотрудникам
   const filtered = filter.employee_ids.length > 0
     ? entries.filter(e => filter.employee_ids.includes(e.employee_id))
     : entries;
 
-  // Группировка по объекту для сводки
   const byObject = {};
   filtered.forEach(e => {
     if (!byObject[e.object_id]) byObject[e.object_id] = [];
@@ -812,7 +819,6 @@ function WorktimeTab({ objects, employees }) {
   });
 
   const totalFOT = filtered.filter(e => e.status === 'worked').reduce((s, e) => s + (e.rate || 0), 0);
-
   const statusLabels = { worked: '✅', sick: '🤒', vacation: '🏖', absent: '❌' };
 
   function toggleEmployee(id) {
@@ -824,47 +830,146 @@ function WorktimeTab({ objects, employees }) {
     }));
   }
 
-  // Быстрые периоды
-  function setPeriod(type) {
-    const now = new Date();
-    if (type === 'today') {
-      setFilter(f => ({ ...f, from_date: today, to_date: today }));
-    } else if (type === 'week') {
-      const mon = new Date(now);
-      mon.setDate(now.getDate() - now.getDay() + 1);
-      setFilter(f => ({ ...f, from_date: mon.toISOString().slice(0, 10), to_date: today }));
-    } else if (type === 'month') {
-      const first = new Date(now.getFullYear(), now.getMonth(), 1);
-      setFilter(f => ({ ...f, from_date: first.toISOString().slice(0, 10), to_date: today }));
-    }
+  async function exportPDF() {
+    const { default: jsPDF } = await import('jspdf');
+    const { default: autoTable } = await import('jspdf-autotable');
+
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+
+    // Шрифт — используем встроенный helvetica, кириллицу транслитерируем
+    const monthLabel = months.find(m => m.year === selectedMonth.year && m.month === selectedMonth.month)?.label || '';
+
+    // Заголовок
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('BG Inzhiniring — Tabel za ' + translitMonth(monthLabel), 14, 15);
+
+    // Получаем дни месяца
+    const daysInMonth = new Date(selectedMonth.year, selectedMonth.month + 1, 0).getDate();
+    const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+
+    // Определяем кого выводить
+    const selectedEmps = filter.employee_ids.length > 0
+      ? employees.filter(e => filter.employee_ids.includes(e.id))
+      : employees.filter(e => {
+          return filtered.some(f => f.employee_id === e.id);
+        });
+
+    // Строим строки таблицы
+    const rows = [];
+    selectedEmps.forEach(emp => {
+      // Группируем по объектам
+      const empEntries = filtered.filter(e => e.employee_id === emp.id);
+      const empObjects = [...new Set(empEntries.map(e => e.object_id))];
+
+      empObjects.forEach((objId, objIdx) => {
+        const objEntries = empEntries.filter(e => e.object_id === objId);
+        const workedDays = objEntries.filter(e => e.status === 'worked').length;
+        const totalPay = objEntries.filter(e => e.status === 'worked').reduce((s, e) => s + (e.rate || 0), 0);
+
+        const row = [
+          objIdx === 0 ? translit(emp.name) : '',
+          translit(objName(objId)),
+        ];
+
+        days.forEach(d => {
+          const dateStr = `${selectedMonth.year}-${String(selectedMonth.month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+          const entry = objEntries.find(e => e.date === dateStr);
+          if (!entry) row.push('');
+          else if (entry.status === 'worked') row.push('R');
+          else if (entry.status === 'sick') row.push('B');
+          else if (entry.status === 'vacation') row.push('O');
+          else if (entry.status === 'absent') row.push('П');
+          else row.push('');
+        });
+
+        row.push(workedDays.toString());
+        row.push(fmt(totalPay) + ' R');
+        rows.push(row);
+      });
+
+      if (empObjects.length === 0) {
+        const row = [translit(emp.name), '—', ...days.map(() => ''), '0', '0 R'];
+        rows.push(row);
+      }
+    });
+
+    // Итого
+    const totalRow = ['ИТОГО', '', ...days.map(() => ''), '', fmt(totalFOT) + ' R'];
+    rows.push(totalRow);
+
+    const head = [['FIO', 'Ob'ekt', ...days.map(d => String(d)), 'Dn', 'Summa']];
+
+    autoTable(doc, {
+      head,
+      body: rows,
+      startY: 22,
+      theme: 'grid',
+      styles: { fontSize: 6.5, cellPadding: 1.2, halign: 'center' },
+      headStyles: { fillColor: [22, 27, 34], textColor: [230, 237, 243], fontStyle: 'bold', fontSize: 7 },
+      columnStyles: {
+        0: { halign: 'left', cellWidth: 28 },
+        1: { halign: 'left', cellWidth: 24 },
+        [days.length + 2]: { cellWidth: 8 },
+        [days.length + 3]: { cellWidth: 20 },
+      },
+      didParseCell: (data) => {
+        if (data.cell.raw === 'R') { data.cell.styles.fillColor = [63, 185, 80]; data.cell.styles.textColor = [255,255,255]; }
+        else if (data.cell.raw === 'B') { data.cell.styles.fillColor = [88, 166, 255]; data.cell.styles.textColor = [255,255,255]; }
+        else if (data.cell.raw === 'O') { data.cell.styles.fillColor = [227, 179, 65]; data.cell.styles.textColor = [255,255,255]; }
+        else if (data.cell.raw === 'П') { data.cell.styles.fillColor = [247, 129, 102]; data.cell.styles.textColor = [255,255,255]; }
+        if (data.row.index === rows.length - 1) {
+          data.cell.styles.fontStyle = 'bold';
+          data.cell.styles.fillColor = [22, 27, 34];
+          data.cell.styles.textColor = [227, 179, 65];
+        }
+      },
+      foot: [['R = rabotal', 'B = bolnichniy', 'O = otpusk', 'П = progul']],
+      footStyles: { fontSize: 6, fillColor: [13, 17, 23], textColor: [139, 148, 158] },
+    });
+
+    doc.save(`tabel_${selectedMonth.year}_${String(selectedMonth.month + 1).padStart(2, '0')}.pdf`);
+  }
+
+  function translit(str) {
+    if (!str) return '';
+    const map = { 'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'zh','з':'z','и':'i','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'kh','ц':'ts','ч':'ch','ш':'sh','щ':'sch','ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya' };
+    return str.split('').map(c => map[c.toLowerCase()] ? (c === c.toUpperCase() ? map[c.toLowerCase()].charAt(0).toUpperCase() + map[c.toLowerCase()].slice(1) : map[c.toLowerCase()]) : c).join('');
+  }
+
+  function translitMonth(str) {
+    return translit(str);
   }
 
   return (
     <div>
       <div style={{ fontSize: 15, fontWeight: 700, color: S.text, marginBottom: 16 }}>⏱ Рабочее время</div>
 
-      {/* Фильтры */}
+      {/* Выбор месяца */}
       <div style={{ background: S.panel, borderRadius: 12, border: `1px solid ${S.border}`, padding: 16, marginBottom: 16 }}>
-        <div style={{ fontSize: 11, color: S.muted, marginBottom: 10, textTransform: 'uppercase' }}>Период</div>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-          <button onClick={() => setPeriod('today')} style={{ ...btnStyle(S.faint), fontSize: 12, padding: '6px 12px' }}>Сегодня</button>
-          <button onClick={() => setPeriod('week')} style={{ ...btnStyle(S.faint), fontSize: 12, padding: '6px 12px' }}>Эта неделя</button>
-          <button onClick={() => setPeriod('month')} style={{ ...btnStyle(S.faint), fontSize: 12, padding: '6px 12px' }}>Этот месяц</button>
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
-          <div style={{ flex: 1, minWidth: 140 }}>
-            <div style={{ fontSize: 11, color: S.muted, marginBottom: 4 }}>С</div>
-            <input type="date" value={filter.from_date} onChange={e => setFilter({ ...filter, from_date: e.target.value })} style={inp} />
-          </div>
-          <div style={{ flex: 1, minWidth: 140 }}>
-            <div style={{ fontSize: 11, color: S.muted, marginBottom: 4 }}>По</div>
-            <input type="date" value={filter.to_date} onChange={e => setFilter({ ...filter, to_date: e.target.value })} style={inp} />
-          </div>
-        </div>
-
-        <div style={{ fontSize: 11, color: S.muted, marginBottom: 8, textTransform: 'uppercase' }}>Сотрудники (все если не выбрано)</div>
+        <div style={{ fontSize: 11, color: S.muted, marginBottom: 10, textTransform: 'uppercase' }}>Месяц</div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {employees.map(e => (
+          {months.map(m => (
+            <button key={`${m.year}-${m.month}`}
+              onClick={() => setSelectedMonth({ year: m.year, month: m.month })}
+              style={{ ...btnStyle(selectedMonth.year === m.year && selectedMonth.month === m.month ? S.blue : S.faint), fontSize: 12, padding: '6px 12px', textTransform: 'capitalize' }}>
+              {m.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Сотрудники */}
+      <div style={{ background: S.panel, borderRadius: 12, border: `1px solid ${S.border}`, padding: 16, marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <div style={{ fontSize: 11, color: S.muted, textTransform: 'uppercase' }}>Сотрудники {filter.employee_ids.length > 0 && `(выбрано: ${filter.employee_ids.length})`}</div>
+          {filter.employee_ids.length > 0 && (
+            <button onClick={() => setFilter(f => ({ ...f, employee_ids: [] }))}
+              style={{ background: 'none', border: 'none', color: S.muted, fontSize: 12, cursor: 'pointer' }}>✕ Сброс</button>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {employees.filter(e => e.status !== 'archived').map(e => (
             <button key={e.id} onClick={() => toggleEmployee(e.id)}
               style={{ ...btnStyle(filter.employee_ids.includes(e.id) ? S.blue : S.faint), fontSize: 12, padding: '5px 10px' }}>
               {e.name}
@@ -873,18 +978,22 @@ function WorktimeTab({ objects, employees }) {
         </div>
       </div>
 
-      {/* Итог */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
+      {/* Итог + кнопка PDF */}
+      <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap', alignItems: 'stretch' }}>
         {[
-          { label: 'ФОТ за период', value: `${new Intl.NumberFormat('ru-RU').format(totalFOT)} ₽`, color: S.yellow },
+          { label: 'ФОТ за период', value: `${fmt(totalFOT)} ₽`, color: S.yellow },
           { label: 'Записей', value: filtered.length, color: S.blue },
           { label: 'Объектов', value: Object.keys(byObject).length, color: S.green },
         ].map((k, i) => (
-          <div key={i} style={{ background: S.panel, borderRadius: 10, border: `1px solid ${S.border}`, padding: '14px 16px' }}>
+          <div key={i} style={{ background: S.panel, borderRadius: 10, border: `1px solid ${S.border}`, padding: '14px 16px', flex: 1, minWidth: 100 }}>
             <div style={{ fontSize: 10, color: S.muted, textTransform: 'uppercase', marginBottom: 6 }}>{k.label}</div>
             <div style={{ fontSize: 20, fontWeight: 800, color: k.color }}>{k.value}</div>
           </div>
         ))}
+        <button onClick={exportPDF}
+          style={{ ...btnStyle(S.green), display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '14px 20px', borderRadius: 10 }}>
+          📄 Выгрузить PDF
+        </button>
       </div>
 
       {/* Сводка по объектам */}
@@ -900,7 +1009,7 @@ function WorktimeTab({ objects, employees }) {
           <div key={objId} style={{ background: S.panel, borderRadius: 12, border: `1px solid ${S.border}`, marginBottom: 14, overflow: 'hidden' }}>
             <div style={{ padding: '12px 16px', borderBottom: `1px solid ${S.faint}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ fontSize: 14, fontWeight: 700, color: S.text }}>🏗 {objName(objId)}</div>
-              <div style={{ fontSize: 13, color: S.yellow, fontWeight: 700 }}>{new Intl.NumberFormat('ru-RU').format(objFOT)} ₽</div>
+              <div style={{ fontSize: 13, color: S.yellow, fontWeight: 700 }}>{fmt(objFOT)} ₽</div>
             </div>
             {objEntries.map(e => (
               <div key={e.id} style={{ padding: '10px 16px', borderBottom: `1px solid ${S.faint}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -914,7 +1023,7 @@ function WorktimeTab({ objects, employees }) {
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontSize: 11, color: S.muted }}>{statusLabels[e.status]} {e.status === 'worked' ? 'Работал' : e.status === 'sick' ? 'Больничный' : e.status === 'vacation' ? 'Отпуск' : 'Прогул'}</div>
-                  {e.rate > 0 && <div style={{ fontSize: 13, color: S.yellow, fontWeight: 700 }}>{new Intl.NumberFormat('ru-RU').format(e.rate)} ₽</div>}
+                  {e.rate > 0 && <div style={{ fontSize: 13, color: S.yellow, fontWeight: 700 }}>{fmt(e.rate)} ₽</div>}
                 </div>
               </div>
             ))}
@@ -924,7 +1033,6 @@ function WorktimeTab({ objects, employees }) {
     </div>
   );
 }
-
 // ─── ПЕРЕМЕЩЕНИЯ ───────────────────────────────────────────────────────────────
 function MovementsTab({ objects }) {
   const [movements, setMovements] = useState([]);
