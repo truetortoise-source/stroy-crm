@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
@@ -22,7 +22,7 @@ const S = {
   blue: '#58a6ff', text: '#e6edf3', muted: '#8b949e', faint: '#30363d',
 };
 
-const btn = (color) => ({ background: color, border: 'none', borderRadius: 8, color: '#fff', padding: '9px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer' });
+const btnStyle = (color) => ({ background: color, border: 'none', borderRadius: 8, color: '#fff', padding: '9px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer' });
 const inp = { background: '#0d1117', border: '1px solid #21262d', color: '#e6edf3', borderRadius: 8, padding: '9px 12px', fontSize: 13, width: '100%', boxSizing: 'border-box', outline: 'none' };
 const sel = { background: '#0d1117', border: '1px solid #21262d', color: '#e6edf3', borderRadius: 8, padding: '9px 12px', fontSize: 13, width: '100%', boxSizing: 'border-box', outline: 'none' };
 
@@ -40,6 +40,57 @@ function DelBtn({ onClick }) {
     <button onClick={onClick} style={{ background: 'none', border: 'none', color: '#ef444488', cursor: 'pointer', fontSize: 16, padding: '4px 8px', borderRadius: 6, flexShrink: 0 }}
       onMouseEnter={e => e.target.style.color = '#ef4444'}
       onMouseLeave={e => e.target.style.color = '#ef444488'}>✕</button>
+  );
+}
+
+async function uploadFile(file, folder) {
+  const ext = file.name.split('.').pop();
+  const fileName = `${folder}/${Date.now()}.${ext}`;
+  const { data, error } = await supabase.storage.from('files').upload(fileName, file);
+  if (error) { console.error(error); return null; }
+  const { data: urlData } = supabase.storage.from('files').getPublicUrl(fileName);
+  return urlData.publicUrl;
+}
+
+function FileUpload({ onUpload, uploading, setUploading }) {
+  const fileRef = useRef();
+
+  async function handleFile(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    setUploading(true);
+    const url = await uploadFile(file, 'docs');
+    setUploading(false);
+    if (url) onUpload(url);
+  }
+
+  return (
+    <div>
+      <input ref={fileRef} type="file" accept="image/*,.pdf" onChange={handleFile} style={{ display: 'none' }} />
+      <button onClick={() => fileRef.current.click()} disabled={uploading}
+        style={{ ...btnStyle(S.faint), width: '100%', opacity: uploading ? 0.6 : 1 }}>
+        {uploading ? '⏳ Загрузка...' : '📎 Прикрепить фото или файл'}
+      </button>
+    </div>
+  );
+}
+
+function FilePreview({ url, onRemove }) {
+  if (!url) return null;
+  const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(url);
+  return (
+    <div style={{ background: S.faint, borderRadius: 8, padding: 10, display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
+      {isImage
+        ? <img src={url} alt="" style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 6 }} />
+        : <span style={{ fontSize: 28 }}>📄</span>
+      }
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <a href={url} target="_blank" rel="noreferrer" style={{ color: S.blue, fontSize: 12, textDecoration: 'none' }}>
+          {isImage ? 'Просмотреть фото' : 'Открыть файл'}
+        </a>
+      </div>
+      {onRemove && <DelBtn onClick={onRemove} />}
+    </div>
   );
 }
 
@@ -99,10 +150,9 @@ export default function App() {
 }
 
 function MainTab({ objects }) {
-  const active = objects.filter(o => o.status === 'active');
   return (
     <div>
-      <div style={{ fontSize: 14, color: S.muted, marginBottom: 16 }}>Активных объектов: {active.length}</div>
+      <div style={{ fontSize: 14, color: S.muted, marginBottom: 16 }}>Активных объектов: {objects.filter(o => o.status === 'active').length}</div>
       {objects.length === 0 && (
         <div style={{ textAlign: 'center', padding: 60, color: S.muted }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>🏗</div>
@@ -153,7 +203,7 @@ function ObjectsTab({ objects, onRefresh }) {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
         <div style={{ fontSize: 15, fontWeight: 700, color: S.text }}>Все объекты</div>
-        <button onClick={() => setShowForm(!showForm)} style={btn(S.accent)}>+ Добавить</button>
+        <button onClick={() => setShowForm(!showForm)} style={btnStyle(S.accent)}>+ Добавить</button>
       </div>
 
       {showForm && (
@@ -171,8 +221,8 @@ function ObjectsTab({ objects, onRefresh }) {
             </Field>
           ))}
           <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={addObject} style={btn(S.green)}>Сохранить</button>
-            <button onClick={() => setShowForm(false)} style={btn(S.faint)}>Отмена</button>
+            <button onClick={addObject} style={btnStyle(S.green)}>Сохранить</button>
+            <button onClick={() => setShowForm(false)} style={btnStyle(S.faint)}>Отмена</button>
           </div>
         </div>
       )}
@@ -202,7 +252,8 @@ function MovementsTab({ objects }) {
   const [movements, setMovements] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [filter, setFilter] = useState({ from: '', to: '', type: '' });
-  const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 10), from_object_id: '', to_object_id: '', type: 'material', note: '', author: '' });
+  const [uploading, setUploading] = useState(false);
+  const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 10), from_object_id: '', to_object_id: '', type: 'material', note: '', author: '', file_url: '' });
 
   useEffect(() => { fetchMovements(); }, []);
 
@@ -213,6 +264,7 @@ function MovementsTab({ objects }) {
 
   async function addMovement() {
     await supabase.from('movements').insert([{ ...form, from_object_id: form.from_object_id || null, to_object_id: form.to_object_id || null }]);
+    setForm({ date: new Date().toISOString().slice(0, 10), from_object_id: '', to_object_id: '', type: 'material', note: '', author: '', file_url: '' });
     setShowForm(false);
     fetchMovements();
   }
@@ -235,7 +287,7 @@ function MovementsTab({ objects }) {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
         <div style={{ fontSize: 15, fontWeight: 700, color: S.text }}>Перемещения</div>
-        <button onClick={() => setShowForm(!showForm)} style={btn(S.accent)}>+ Добавить</button>
+        <button onClick={() => setShowForm(!showForm)} style={btnStyle(S.accent)}>+ Добавить</button>
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
@@ -273,9 +325,13 @@ function MovementsTab({ objects }) {
           </Field>
           <Field label="Описание"><input value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} placeholder='Что везём...' style={inp} /></Field>
           <Field label="Ответственный"><input value={form.author} onChange={e => setForm({ ...form, author: e.target.value })} placeholder='Иванов А.В.' style={inp} /></Field>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={addMovement} style={btn(S.green)}>Сохранить</button>
-            <button onClick={() => setShowForm(false)} style={btn(S.faint)}>Отмена</button>
+          <Field label="Фото или файл накладной">
+            <FileUpload onUpload={url => setForm({ ...form, file_url: url })} uploading={uploading} setUploading={setUploading} />
+            <FilePreview url={form.file_url} onRemove={() => setForm({ ...form, file_url: '' })} />
+          </Field>
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <button onClick={addMovement} disabled={uploading} style={btnStyle(S.green)}>Сохранить</button>
+            <button onClick={() => setShowForm(false)} style={btnStyle(S.faint)}>Отмена</button>
           </div>
         </div>
       )}
@@ -286,6 +342,7 @@ function MovementsTab({ objects }) {
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: S.text, marginBottom: 4 }}>{m.type === 'tool' ? '🔧' : '📦'} {m.note || '—'}</div>
               <div style={{ fontSize: 12, color: S.muted }}>{objName(m.from_object_id)} → {objName(m.to_object_id)} · {m.date}{m.author && ` · 👤 ${m.author}`}</div>
+              <FilePreview url={m.file_url} />
             </div>
             <DelBtn onClick={() => deleteMovement(m.id)} />
           </div>
@@ -299,7 +356,8 @@ function MovementsTab({ objects }) {
 function InvoicesTab({ objects }) {
   const [invoices, setInvoices] = useState([]);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ object_id: '', date: new Date().toISOString().slice(0, 10), amount: '', note: '', status: 'pending' });
+  const [uploading, setUploading] = useState(false);
+  const [form, setForm] = useState({ object_id: '', date: new Date().toISOString().slice(0, 10), amount: '', note: '', status: 'pending', file_url: '' });
 
   useEffect(() => { fetchInvoices(); }, []);
   async function fetchInvoices() {
@@ -309,6 +367,7 @@ function InvoicesTab({ objects }) {
   async function addInvoice() {
     if (!form.object_id || !form.amount) return;
     await supabase.from('invoices').insert([{ ...form, amount: +form.amount }]);
+    setForm({ object_id: '', date: new Date().toISOString().slice(0, 10), amount: '', note: '', status: 'pending', file_url: '' });
     setShowForm(false);
     fetchInvoices();
   }
@@ -326,7 +385,7 @@ function InvoicesTab({ objects }) {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
         <div style={{ fontSize: 15, fontWeight: 700, color: S.text }}>Счета</div>
-        <button onClick={() => setShowForm(!showForm)} style={btn(S.accent)}>+ Добавить</button>
+        <button onClick={() => setShowForm(!showForm)} style={btnStyle(S.accent)}>+ Добавить</button>
       </div>
 
       {showForm && (
@@ -347,9 +406,13 @@ function InvoicesTab({ objects }) {
               <option value='overdue'>Просрочен</option>
             </select>
           </Field>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={addInvoice} style={btn(S.green)}>Сохранить</button>
-            <button onClick={() => setShowForm(false)} style={btn(S.faint)}>Отмена</button>
+          <Field label="Фото или скан счёта">
+            <FileUpload onUpload={url => setForm({ ...form, file_url: url })} uploading={uploading} setUploading={setUploading} />
+            <FilePreview url={form.file_url} onRemove={() => setForm({ ...form, file_url: '' })} />
+          </Field>
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <button onClick={addInvoice} disabled={uploading} style={btnStyle(S.green)}>Сохранить</button>
+            <button onClick={() => setShowForm(false)} style={btnStyle(S.faint)}>Отмена</button>
           </div>
         </div>
       )}
@@ -364,10 +427,11 @@ function InvoicesTab({ objects }) {
                   <span style={{ fontSize: 14, fontWeight: 700, color: S.text }}>{objName(inv.object_id)}</span>
                   <span style={{ fontSize: 16, fontWeight: 700, color: S.yellow }}>{new Intl.NumberFormat('ru-RU').format(inv.amount)} ₽</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: S.muted }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: S.muted, marginBottom: 6 }}>
                   <span>{inv.note || '—'} · {inv.date}</span>
                   <span style={{ background: `${st}22`, color: st, borderRadius: 5, padding: '2px 7px', fontWeight: 700 }}>{statusLabels[inv.status]}</span>
                 </div>
+                <FilePreview url={inv.file_url} />
               </div>
               <DelBtn onClick={() => deleteInvoice(inv.id)} />
             </div>
@@ -417,7 +481,7 @@ function TasksTab({ objects }) {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
         <div style={{ fontSize: 15, fontWeight: 700, color: S.text }}>Задания</div>
-        <button onClick={() => setShowForm(!showForm)} style={btn(S.accent)}>+ Добавить</button>
+        <button onClick={() => setShowForm(!showForm)} style={btnStyle(S.accent)}>+ Добавить</button>
       </div>
 
       {showForm && (
@@ -437,8 +501,8 @@ function TasksTab({ objects }) {
           <Field label="Задание"><input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder='Описание задания' style={inp} /></Field>
           <Field label="Дедлайн"><input type="date" value={form.deadline} onChange={e => setForm({ ...form, deadline: e.target.value })} style={inp} /></Field>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={addTask} style={btn(S.green)}>Сохранить</button>
-            <button onClick={() => setShowForm(false)} style={btn(S.faint)}>Отмена</button>
+            <button onClick={addTask} style={btnStyle(S.green)}>Сохранить</button>
+            <button onClick={() => setShowForm(false)} style={btnStyle(S.faint)}>Отмена</button>
           </div>
         </div>
       )}
@@ -576,8 +640,8 @@ function TimesheetTab({ objects }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <div style={{ fontSize: 15, fontWeight: 700, color: S.text }}>Табель</div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={() => setShowAddEmp(!showAddEmp)} style={btn(S.faint)}>+ Сотрудник</button>
-          <button onClick={() => setShowAddTime(!showAddTime)} style={btn(S.accent)}>+ Запись</button>
+          <button onClick={() => setShowAddEmp(!showAddEmp)} style={btnStyle(S.faint)}>+ Сотрудник</button>
+          <button onClick={() => setShowAddTime(!showAddTime)} style={btnStyle(S.accent)}>+ Запись</button>
         </div>
       </div>
 
@@ -585,7 +649,6 @@ function TimesheetTab({ objects }) {
         ФОТ: {new Intl.NumberFormat('ru-RU').format(totalFOT)} ₽
       </div>
 
-      {/* Список сотрудников */}
       {employees.length > 0 && (
         <div style={{ background: S.panel, borderRadius: 12, border: `1px solid ${S.border}`, padding: 16, marginBottom: 16 }}>
           <div style={{ fontSize: 12, color: S.muted, marginBottom: 10, textTransform: 'uppercase' }}>Сотрудники</div>
@@ -611,8 +674,8 @@ function TimesheetTab({ objects }) {
           <Field label="Роль"><input value={empForm.role} onChange={e => setEmpForm({ ...empForm, role: e.target.value })} placeholder='Каменщик' style={inp} /></Field>
           <Field label="Ставка в день (₽)"><input type="number" value={empForm.rate} onChange={e => setEmpForm({ ...empForm, rate: e.target.value })} placeholder='2500' style={inp} /></Field>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={addEmployee} style={btn(S.green)}>Сохранить</button>
-            <button onClick={() => setShowAddEmp(false)} style={btn(S.faint)}>Отмена</button>
+            <button onClick={addEmployee} style={btnStyle(S.green)}>Сохранить</button>
+            <button onClick={() => setShowAddEmp(false)} style={btnStyle(S.faint)}>Отмена</button>
           </div>
         </div>
       )}
@@ -645,8 +708,8 @@ function TimesheetTab({ objects }) {
             </select>
           </Field>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={addTimeEntry} style={btn(S.green)}>Сохранить</button>
-            <button onClick={() => setShowAddTime(false)} style={btn(S.faint)}>Отмена</button>
+            <button onClick={addTimeEntry} style={btnStyle(S.green)}>Сохранить</button>
+            <button onClick={() => setShowAddTime(false)} style={btnStyle(S.faint)}>Отмена</button>
           </div>
         </div>
       )}
