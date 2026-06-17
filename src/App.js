@@ -898,7 +898,7 @@ function WorktimeTab({ objects, employees }) {
     const totalRow = ['ИТОГО', '', ...days.map(() => ''), '', fmt(totalFOT) + ' R'];
     rows.push(totalRow);
 
-    const head = [['FIO', 'Ob'ekt', ...days.map(d => String(d)), 'Dn', 'Summa']];
+    const head = [['FIO', 'Obekt', ...days.map(d => String(d)), 'Dn', 'Summa']];
 
     autoTable(doc, {
       head,
