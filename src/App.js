@@ -280,6 +280,8 @@ function MovementsTab({ objects }) {
     if (filter.from && m.from_object_id !== filter.from) return false;
     if (filter.to && m.to_object_id !== filter.to) return false;
     if (filter.type && m.type !== filter.type) return false;
+     if (filter.from_date && m.date < filter.from_date) return false;
+    if (filter.to_date && m.date > filter.to_date) return false;
     return true;
   });
 
