@@ -92,11 +92,22 @@ function FilePreview({ url, onRemove }) {
   );
 }
 
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
+  return isMobile;
+}
+
 export default function App() {
   const [tab, setTab] = useState('main');
   const [objects, setObjects] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
+  const isMobile = useIsMobile();
 
   useEffect(() => { fetchAll(); }, []);
 
@@ -126,24 +137,26 @@ export default function App() {
         <div style={{ fontSize: 12, color: S.green }}>● Подключено</div>
       </div>
 
-      <div style={{ background: S.panel, borderBottom: `1px solid ${S.border}`, padding: '0 16px', display: 'flex', gap: 4, overflowX: 'auto' }}>
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{
-            background: 'none', border: 'none',
-            borderBottom: tab === t.id ? `2px solid ${S.accent}` : '2px solid transparent',
-            color: tab === t.id ? S.accent : S.muted,
-            padding: '12px 14px', fontSize: 13,
-            fontWeight: tab === t.id ? 700 : 400, cursor: 'pointer', whiteSpace: 'nowrap'
-          }}>{t.label}</button>
-        ))}
-      </div>
+      {!isMobile && (
+        <div style={{ background: S.panel, borderBottom: `1px solid ${S.border}`, padding: '0 16px', display: 'flex', gap: 4, overflowX: 'auto' }}>
+          {TABS.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)} style={{
+              background: 'none', border: 'none',
+              borderBottom: tab === t.id ? `2px solid ${S.accent}` : '2px solid transparent',
+              color: tab === t.id ? S.accent : S.muted,
+              padding: '12px 14px', fontSize: 13,
+              fontWeight: tab === t.id ? 700 : 400, cursor: 'pointer', whiteSpace: 'nowrap'
+            }}>{t.label}</button>
+          ))}
+        </div>
+      )}
 
-      <div style={{ padding: '20px 16px', maxWidth: 900, margin: '0 auto' }}>
+      <div style={{ padding: isMobile ? '12px 12px 80px' : '20px 16px', maxWidth: 900, margin: '0 auto' }}>
         {loading ? (
           <div style={{ textAlign: 'center', padding: 60, color: S.muted }}>Загрузка...</div>
         ) : (
           <>
-            {tab === 'main' && <MainTab objects={objects} />}
+            {tab === 'main' && <MainTab objects={objects} isMobile={isMobile} />}
             {tab === 'objects' && <ObjectsTab objects={objects} employees={employees} onRefresh={fetchAll} />}
             {tab === 'employees' && <EmployeesTab employees={employees} onRefresh={fetchEmployees} />}
             {tab === 'movements' && <MovementsTab objects={objects} />}
@@ -154,12 +167,29 @@ export default function App() {
           </>
         )}
       </div>
+      {/* Мобильная навигация снизу */}
+      {isMobile && (
+        <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: S.panel, borderTop: `1px solid ${S.border}`, display: 'flex', zIndex: 100, paddingBottom: 'env(safe-area-inset-bottom)' }}>
+          {TABS.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)} style={{
+              flex: 1, background: 'none', border: 'none',
+              color: tab === t.id ? S.accent : S.muted,
+              padding: '8px 4px 6px', fontSize: 10, fontWeight: tab === t.id ? 700 : 400,
+              cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+              borderTop: tab === t.id ? `2px solid ${S.accent}` : '2px solid transparent',
+            }}>
+              <span style={{ fontSize: 18 }}>{t.label.split(' ')[0]}</span>
+              <span style={{ fontSize: 9, whiteSpace: 'nowrap', overflow: 'hidden', maxWidth: 50, textOverflow: 'ellipsis' }}>{t.label.split(' ').slice(1).join(' ')}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
 // ─── ГЛАВНАЯ ───────────────────────────────────────────────────────────────────
-function MainTab({ objects }) {
+function MainTab({ objects, isMobile }) {
   const [stats, setStats] = React.useState({ invoices: [], timesheet: [] });
 
   React.useEffect(() => {
@@ -182,7 +212,7 @@ function MainTab({ objects }) {
 
   return (
     <div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: 10, marginBottom: 20 }}>
         {[
           { label: 'Сумма контрактов', value: `${fmt(totalContract)} ₽`, color: S.blue },
           { label: 'Материалы (счета)', value: `${fmt(totalMaterials)} ₽`, color: S.yellow },
@@ -220,7 +250,7 @@ function MainTab({ objects }) {
               {o.foreman && <span>👷 {o.foreman}</span>}
               {daysLeft !== null && <span style={{ color: daysLeft < 30 ? S.accent : S.muted }}>⏱ {daysLeft > 0 ? `${daysLeft} дн.` : 'Срок истёк'}</span>}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: 8 }}>
               {[
                 { label: 'Контракт', value: `${fmt(o.contract_sum || 0)} ₽`, color: S.blue },
                 { label: 'Материалы', value: `${fmt(objMaterials)} ₽`, color: S.yellow },
@@ -1148,23 +1178,45 @@ function InvoicesTab({ objects }) {
 function TasksTab({ objects, employees }) {
   const [tasks, setTasks] = useState([]);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ object_id: '', employee_id: '', title: '', deadline: '', status: 'pending' });
+  const [uploading, setUploading] = useState(false);
+  const [expandedId, setExpandedId] = useState(null);
+  const [filter, setFilter] = useState({ object_id: '', employee_id: '', status: '', priority: '' });
+  const emptyForm = { object_id: '', employee_id: '', title: '', description: '', deadline: '', priority: 'medium', status: 'new', created_by: '', file_url: '' };
+  const [form, setForm] = useState(emptyForm);
 
   useEffect(() => { fetchTasks(); }, []);
+
   async function fetchTasks() {
     const { data } = await supabase.from('tasks').select('*').order('deadline', { ascending: true });
     setTasks(data || []);
   }
+
   async function addTask() {
     if (!form.title) return;
     await supabase.from('tasks').insert([{ ...form }]);
+    setForm(emptyForm);
     setShowForm(false);
     fetchTasks();
   }
-  async function toggleTask(id, status) {
-    await supabase.from('tasks').update({ status: status === 'done' ? 'pending' : 'done' }).eq('id', id);
+
+  async function updateStatus(id, status) {
+    const updates = { status };
+    if (status === 'done') {
+      updates.completed_at = new Date().toISOString();
+    }
+    await supabase.from('tasks').update(updates).eq('id', id);
     fetchTasks();
   }
+
+  async function markDone(id, completedBy) {
+    await supabase.from('tasks').update({
+      status: 'done',
+      completed_by: completedBy,
+      completed_at: new Date().toISOString(),
+    }).eq('id', id);
+    fetchTasks();
+  }
+
   async function deleteTask(id) {
     if (!window.confirm('Удалить задание?')) return;
     await supabase.from('tasks').delete().eq('id', id);
@@ -1174,57 +1226,234 @@ function TasksTab({ objects, employees }) {
   const objName = id => objects.find(o => o.id === id)?.name || '—';
   const empName = id => employees.find(e => e.id === id)?.name || '—';
 
+  const priorityConfig = {
+    high:   { label: 'Высокий',  color: '#ef4444', bg: '#ef444422', icon: '🔴' },
+    medium: { label: 'Средний',  color: S.yellow,  bg: '#e3b34122', icon: '🟡' },
+    low:    { label: 'Низкий',   color: S.green,   bg: '#3fb95022', icon: '🟢' },
+  };
+
+  const statusConfig = {
+    new:        { label: 'Новое',      color: S.blue,   icon: '📋' },
+    inprogress: { label: 'В работе',   color: S.yellow, icon: '🔄' },
+    done:       { label: 'Выполнено',  color: S.green,  icon: '✅' },
+  };
+
+  const overdueCount = tasks.filter(t => t.deadline && new Date(t.deadline) < new Date() && t.status !== 'done').length;
+
+  const filtered = tasks.filter(t => {
+    if (filter.object_id && t.object_id !== filter.object_id) return false;
+    if (filter.employee_id && t.employee_id !== filter.employee_id) return false;
+    if (filter.status && t.status !== filter.status) return false;
+    if (filter.priority && t.priority !== filter.priority) return false;
+    return true;
+  });
+
+  // Sort: high priority first, then by deadline
+  const sorted = [...filtered].sort((a, b) => {
+    const pOrder = { high: 0, medium: 1, low: 2 };
+    if (pOrder[a.priority] !== pOrder[b.priority]) return pOrder[a.priority] - pOrder[b.priority];
+    if (!a.deadline) return 1;
+    if (!b.deadline) return -1;
+    return new Date(a.deadline) - new Date(b.deadline);
+  });
+
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: S.text }}>Задания</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: S.text }}>Задания</div>
+          {overdueCount > 0 && (
+            <span style={{ background: '#ef444422', color: '#ef4444', borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 700 }}>
+              🔴 Просрочено: {overdueCount}
+            </span>
+          )}
+        </div>
         <button onClick={() => setShowForm(!showForm)} style={btnStyle(S.accent)}>+ Добавить</button>
       </div>
 
+      {/* Фильтры */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+        <select value={filter.object_id} onChange={e => setFilter({ ...filter, object_id: e.target.value })}
+          style={{ background: S.panel, border: `1px solid ${S.border}`, color: S.muted, borderRadius: 8, padding: '7px 10px', fontSize: 12 }}>
+          <option value=''>Все объекты</option>
+          {objects.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+        </select>
+        <select value={filter.employee_id} onChange={e => setFilter({ ...filter, employee_id: e.target.value })}
+          style={{ background: S.panel, border: `1px solid ${S.border}`, color: S.muted, borderRadius: 8, padding: '7px 10px', fontSize: 12 }}>
+          <option value=''>Все сотрудники</option>
+          {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+        </select>
+        <select value={filter.status} onChange={e => setFilter({ ...filter, status: e.target.value })}
+          style={{ background: S.panel, border: `1px solid ${S.border}`, color: S.muted, borderRadius: 8, padding: '7px 10px', fontSize: 12 }}>
+          <option value=''>Все статусы</option>
+          <option value='new'>📋 Новое</option>
+          <option value='inprogress'>🔄 В работе</option>
+          <option value='done'>✅ Выполнено</option>
+        </select>
+        <select value={filter.priority} onChange={e => setFilter({ ...filter, priority: e.target.value })}
+          style={{ background: S.panel, border: `1px solid ${S.border}`, color: S.muted, borderRadius: 8, padding: '7px 10px', fontSize: 12 }}>
+          <option value=''>Все приоритеты</option>
+          <option value='high'>🔴 Высокий</option>
+          <option value='medium'>🟡 Средний</option>
+          <option value='low'>🟢 Низкий</option>
+        </select>
+        {(filter.object_id || filter.employee_id || filter.status || filter.priority) &&
+          <button onClick={() => setFilter({ object_id: '', employee_id: '', status: '', priority: '' })}
+            style={{ ...btnStyle(S.faint), fontSize: 12, padding: '6px 10px' }}>✕ Сброс</button>}
+      </div>
+
+      {/* Форма добавления */}
       {showForm && (
         <div style={{ background: S.panel, borderRadius: 12, border: `1px solid ${S.border}`, padding: 20, marginBottom: 16 }}>
+          <Field label="Задание *">
+            <input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder='Залить фундамент...' style={inp} />
+          </Field>
+          <Field label="Описание">
+            <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
+              placeholder='Подробности задания...' rows={3}
+              style={{ ...inp, resize: 'vertical', fontFamily: 'Arial, sans-serif' }} />
+          </Field>
           <Field label="Объект">
             <select value={form.object_id} onChange={e => setForm({ ...form, object_id: e.target.value })} style={sel}>
               <option value=''>Выберите объект</option>
               {objects.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
             </select>
           </Field>
-          <Field label="Сотрудник">
+          <Field label="Ответственный">
             <select value={form.employee_id} onChange={e => setForm({ ...form, employee_id: e.target.value })} style={sel}>
               <option value=''>Выберите сотрудника</option>
               {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
             </select>
           </Field>
-          <Field label="Задание"><input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder='Описание задания' style={inp} /></Field>
-          <Field label="Дедлайн"><input type="date" value={form.deadline} onChange={e => setForm({ ...form, deadline: e.target.value })} style={inp} /></Field>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={addTask} style={btnStyle(S.green)}>Сохранить</button>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <Field label="Приоритет">
+              <select value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })} style={sel}>
+                <option value='high'>🔴 Высокий</option>
+                <option value='medium'>🟡 Средний</option>
+                <option value='low'>🟢 Низкий</option>
+              </select>
+            </Field>
+            <Field label="Дедлайн">
+              <input type="date" value={form.deadline} onChange={e => setForm({ ...form, deadline: e.target.value })} style={inp} />
+            </Field>
+          </div>
+          <Field label="Поставил задачу">
+            <input value={form.created_by} onChange={e => setForm({ ...form, created_by: e.target.value })} placeholder='Ваше имя' style={inp} />
+          </Field>
+          <Field label="Фото или файл">
+            <FileUpload onUpload={url => setForm({ ...form, file_url: url })} uploading={uploading} setUploading={setUploading} />
+            <FilePreview url={form.file_url} onRemove={() => setForm({ ...form, file_url: '' })} />
+          </Field>
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <button onClick={addTask} disabled={uploading} style={btnStyle(S.green)}>Сохранить</button>
             <button onClick={() => setShowForm(false)} style={btnStyle(S.faint)}>Отмена</button>
           </div>
         </div>
       )}
 
-      {tasks.map(t => {
+      {sorted.length === 0 && <div style={{ textAlign: 'center', padding: 40, color: S.muted }}>Нет заданий</div>}
+
+      {sorted.map(t => {
         const overdue = t.deadline && new Date(t.deadline) < new Date() && t.status !== 'done';
+        const pr = priorityConfig[t.priority] || priorityConfig.medium;
+        const st = statusConfig[t.status] || statusConfig.new;
+        const isExpanded = expandedId === t.id;
+
         return (
-          <div key={t.id} style={{ background: S.panel, borderRadius: 12, border: `1px solid ${overdue ? S.accent : S.border}`, padding: '14px 16px', marginBottom: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-              <div onClick={() => toggleTask(t.id, t.status)} style={{ cursor: 'pointer', fontSize: 18, flexShrink: 0, marginTop: 2 }}>
-                {t.status === 'done' ? '✅' : overdue ? '🔴' : '⬜'}
+          <div key={t.id} style={{ background: S.panel, borderRadius: 12, border: `1px solid ${overdue ? '#ef4444' : S.border}`, marginBottom: 10, overflow: 'hidden' }}>
+            {/* Шапка карточки */}
+            <div style={{ padding: '14px 16px', cursor: 'pointer' }} onClick={() => setExpandedId(isExpanded ? null : t.id)}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                <div style={{ flexShrink: 0, marginTop: 2 }}>
+                  <span style={{ fontSize: 16 }}>{pr.icon}</span>
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: t.status === 'done' ? S.muted : S.text, textDecoration: t.status === 'done' ? 'line-through' : 'none', marginBottom: 4 }}>
+                    {t.title}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <span style={{ background: `${st.color}22`, color: st.color, borderRadius: 5, padding: '2px 7px', fontSize: 11, fontWeight: 700 }}>
+                      {st.icon} {st.label}
+                    </span>
+                    {t.object_id && <span style={{ fontSize: 11, color: S.muted }}>🏗 {objName(t.object_id)}</span>}
+                    {t.employee_id && <span style={{ fontSize: 11, color: S.muted }}>👤 {empName(t.employee_id)}</span>}
+                    {t.deadline && <span style={{ fontSize: 11, color: overdue ? '#ef4444' : S.muted }}>📅 {t.deadline}{overdue ? ' ⚠️' : ''}</span>}
+                  </div>
+                </div>
+                <span style={{ color: S.muted, fontSize: 12, flexShrink: 0 }}>{isExpanded ? '▲' : '▼'}</span>
               </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: t.status === 'done' ? S.muted : S.text, textDecoration: t.status === 'done' ? 'line-through' : 'none', marginBottom: 4 }}>{t.title}</div>
-                <div style={{ fontSize: 12, color: S.muted }}>{objName(t.object_id)} · {empName(t.employee_id)}{t.deadline && ` · 📅 ${t.deadline}`}</div>
-              </div>
-              <DelBtn onClick={() => deleteTask(t.id)} />
             </div>
+
+            {/* Раскрытая часть */}
+            {isExpanded && (
+              <div style={{ borderTop: `1px solid ${S.faint}`, padding: '14px 16px', background: '#0d111755' }}>
+                {t.description && (
+                  <div style={{ fontSize: 13, color: S.muted, marginBottom: 12, lineHeight: 1.5 }}>{t.description}</div>
+                )}
+
+                <div style={{ display: 'flex', gap: 16, fontSize: 12, color: S.muted, flexWrap: 'wrap', marginBottom: 12 }}>
+                  {t.created_by && <span>✍️ Поставил: <span style={{ color: S.text }}>{t.created_by}</span></span>}
+                  {t.completed_by && <span>✅ Выполнил: <span style={{ color: S.green }}>{t.completed_by}</span></span>}
+                  {t.completed_at && <span>🕐 {new Date(t.completed_at).toLocaleDateString('ru-RU')}</span>}
+                </div>
+
+                <FilePreview url={t.file_url} />
+
+                {/* Кнопки статусов */}
+                {t.status !== 'done' && (
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ fontSize: 11, color: S.muted, marginBottom: 8, textTransform: 'uppercase' }}>Изменить статус</div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {t.status !== 'new' && (
+                        <button onClick={() => updateStatus(t.id, 'new')} style={{ ...btnStyle(S.faint), fontSize: 12, padding: '6px 12px' }}>📋 Новое</button>
+                      )}
+                      {t.status !== 'inprogress' && (
+                        <button onClick={() => updateStatus(t.id, 'inprogress')} style={{ ...btnStyle(S.yellow), fontSize: 12, padding: '6px 12px' }}>🔄 В работе</button>
+                      )}
+                      <DoneButton onDone={(name) => markDone(t.id, name)} />
+                    </div>
+                  </div>
+                )}
+
+                <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
+                  <button onClick={() => deleteTask(t.id)}
+                    style={{ background: 'none', border: 'none', color: '#ef444466', cursor: 'pointer', fontSize: 12 }}>
+                    🗑 Удалить
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         );
       })}
-      {tasks.length === 0 && <div style={{ textAlign: 'center', padding: 40, color: S.muted }}>Нет заданий</div>}
     </div>
   );
 }
+
+function DoneButton({ onDone }) {
+  const [showInput, setShowInput] = useState(false);
+  const [name, setName] = useState('');
+
+  if (!showInput) {
+    return (
+      <button onClick={() => setShowInput(true)} style={{ ...btnStyle(S.green), fontSize: 12, padding: '6px 12px' }}>
+        ✅ Выполнено
+      </button>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+      <input value={name} onChange={e => setName(e.target.value)} placeholder='Ваше имя'
+        style={{ ...inp, width: 140, fontSize: 12, padding: '6px 10px' }} />
+      <button onClick={() => { onDone(name); setShowInput(false); }}
+        style={{ ...btnStyle(S.green), fontSize: 12, padding: '6px 12px' }}>Подтвердить</button>
+      <button onClick={() => setShowInput(false)}
+        style={{ ...btnStyle(S.faint), fontSize: 12, padding: '6px 10px' }}>✕</button>
+    </div>
+  );
+}
+
 
 // ─── ОТЧЁТЫ ────────────────────────────────────────────────────────────────────
 function ReportsTab({ objects }) {
