@@ -242,7 +242,7 @@ export default function App() {
             {tab === 'objects' && <ObjectsTab objects={objects} employees={employees} onRefresh={fetchAll} />}
             {tab === 'movements' && <MovementsTab objects={objects} linkedUsers={linkedUsers} userProfile={userProfile} />}
             {tab === 'invoices' && <InvoicesTab objects={objects} />}
-            {tab === 'tasks' && <TasksTab objects={objects} employees={employees} userProfile={userProfile} />}
+            {tab === 'tasks' && <TasksTab objects={objects} employees={employees} linkedUsers={linkedUsers} userProfile={userProfile} />}
             {tab === 'reports' && <ReportsTab objects={objects} employees={employees} onRefreshEmployees={fetchEmployees} userProfile={userProfile} />}
             {tab === 'admin' && userProfile?.role === 'admin' && <AdminTab />}
             {tab === 'tools' && <ToolsTab objects={objects} />}
@@ -1497,7 +1497,7 @@ function InvoicesTab({ objects }) {
   );
 }
 // ─── ЗАДАНИЯ ───────────────────────────────────────────────────────────────────
-function TasksTab({ objects, employees, userProfile }) {
+function TasksTab({ objects, employees, linkedUsers, userProfile }) {
   const [tasks, setTasks] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [uploading, setUploading] = useState(false);
