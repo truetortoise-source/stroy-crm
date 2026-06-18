@@ -9,12 +9,10 @@ const supabase = createClient(
 const TABS = [
   { id: 'main', label: '🏠 Главная' },
   { id: 'objects', label: '🏗 Объекты' },
-  { id: 'employees', label: '👥 Сотрудники' },
   { id: 'movements', label: '📋 Перемещения' },
   { id: 'invoices', label: '🧾 Счета' },
   { id: 'tasks', label: '📅 Задания' },
   { id: 'reports', label: '📊 Отчёты' },
-  { id: 'worktime', label: '⏱ Рабочее время' },
   { id: 'tools', label: '🔧 Инструмент' },
 ];
 
@@ -159,12 +157,10 @@ export default function App() {
           <>
             {tab === 'main' && <MainTab objects={objects} employees={employees} isMobile={isMobile} />}
             {tab === 'objects' && <ObjectsTab objects={objects} employees={employees} onRefresh={fetchAll} />}
-            {tab === 'employees' && <EmployeesTab employees={employees} onRefresh={fetchEmployees} />}
             {tab === 'movements' && <MovementsTab objects={objects} />}
             {tab === 'invoices' && <InvoicesTab objects={objects} />}
             {tab === 'tasks' && <TasksTab objects={objects} employees={employees} />}
-            {tab === 'reports' && <ReportsTab objects={objects} />}
-            {tab === 'worktime' && <WorktimeTab objects={objects} employees={employees} />}
+            {tab === 'reports' && <ReportsTab objects={objects} employees={employees} onRefreshEmployees={fetchEmployees} />}
             {tab === 'tools' && <ToolsTab objects={objects} />}
           </>
         )}
@@ -1662,8 +1658,24 @@ function DoneButton({ onDone }) {
 }
 
 
-// ─── ОТЧЁТЫ ────────────────────────────────────────────────────────────────────
-function ReportsTab({ objects }) {
+// ─── ОТЧЁТЫ ───────────────────────────────────────────────────────────────────
+function ReportsTab({ objects, employees, onRefreshEmployees }) {
+  const [subTab, setSubTab] = useState('finance');
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+        <button onClick={() => setSubTab('finance')} style={{ ...btnStyle(subTab === 'finance' ? S.blue : S.faint), fontSize: 12, padding: '8px 14px' }}>💰 Финансы</button>
+        <button onClick={() => setSubTab('worktime')} style={{ ...btnStyle(subTab === 'worktime' ? S.blue : S.faint), fontSize: 12, padding: '8px 14px' }}>⏱ Рабочее время</button>
+        <button onClick={() => setSubTab('employees')} style={{ ...btnStyle(subTab === 'employees' ? S.blue : S.faint), fontSize: 12, padding: '8px 14px' }}>👥 Сотрудники</button>
+      </div>
+      {subTab === 'finance' && <FinanceReport objects={objects} />}
+      {subTab === 'worktime' && <WorktimeTab objects={objects} employees={employees} />}
+      {subTab === 'employees' && <EmployeesTab employees={employees} onRefresh={onRefreshEmployees} />}
+    </div>
+  );
+}
+
+function FinanceReport({ objects }) {
   const [invoices, setInvoices] = useState([]);
   const [timesheet, setTimesheet] = useState([]);
   const [filter, setFilter] = useState({ object_id: '', from_date: '', to_date: '' });
@@ -1677,16 +1689,13 @@ function ReportsTab({ objects }) {
     if (filter.from_date) { iq = iq.gte('date', filter.from_date); tq = tq.gte('date', filter.from_date); }
     if (filter.to_date) { iq = iq.lte('date', filter.to_date); tq = tq.lte('date', filter.to_date); }
     const [{ data: inv }, { data: ts }] = await Promise.all([iq, tq]);
-    setInvoices(inv || []);
-    setTimesheet(ts || []);
+    setInvoices(inv || []); setTimesheet(ts || []);
   }
 
   const fmt = v => new Intl.NumberFormat('ru-RU').format(v);
   const totalMaterials = invoices.reduce((s, i) => s + (i.amount || 0), 0);
   const totalFOT = timesheet.filter(t => t.status === 'worked').reduce((s, t) => s + (t.rate || 0), 0);
   const totalAll = totalMaterials + totalFOT;
-
-  // По объектам
   const byObject = {};
   objects.forEach(o => { byObject[o.id] = { name: o.name, materials: 0, fot: 0 }; });
   invoices.forEach(i => { if (byObject[i.object_id]) byObject[i.object_id].materials += (i.amount || 0); });
@@ -1694,16 +1703,12 @@ function ReportsTab({ objects }) {
 
   return (
     <div>
-      <div style={{ fontSize: 15, fontWeight: 700, color: S.text, marginBottom: 16 }}>Отчёты</div>
-
-      {/* Фильтры */}
       <div style={{ background: S.panel, borderRadius: 12, border: `1px solid ${S.border}`, padding: 16, marginBottom: 16 }}>
         <div style={{ fontSize: 11, color: S.muted, marginBottom: 10, textTransform: 'uppercase' }}>Период и объект</div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <select value={filter.object_id} onChange={e => setFilter({ ...filter, object_id: e.target.value })}
             style={{ background: S.bg, border: `1px solid ${S.border}`, color: S.text, borderRadius: 8, padding: '8px 12px', fontSize: 12 }}>
-            <option value=''>Все объекты</option>
-            {objects.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+            <option value=''>Все объекты</option>{objects.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
           </select>
           <input type='date' value={filter.from_date} onChange={e => setFilter({ ...filter, from_date: e.target.value })}
             style={{ background: S.bg, border: `1px solid ${S.border}`, color: S.text, borderRadius: 8, padding: '8px 12px', fontSize: 12 }} />
@@ -1713,8 +1718,6 @@ function ReportsTab({ objects }) {
             <button onClick={() => setFilter({ object_id: '', from_date: '', to_date: '' })} style={{ ...btnStyle(S.faint), fontSize: 12, padding: '6px 10px' }}>✕ Сброс</button>}
         </div>
       </div>
-
-      {/* Три отчёта */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12, marginBottom: 20 }}>
         {[
           { label: '🧾 Расходы по счетам (материалы)', value: totalMaterials, sub: `${invoices.length} счетов`, color: S.yellow },
@@ -1730,18 +1733,12 @@ function ReportsTab({ objects }) {
           </div>
         ))}
       </div>
-
-      {/* Разбивка по объектам */}
       <div style={{ fontSize: 13, fontWeight: 700, color: S.text, marginBottom: 10 }}>По объектам</div>
       {Object.values(byObject).filter(o => o.materials > 0 || o.fot > 0).map((o, i) => (
         <div key={i} style={{ background: S.panel, borderRadius: 10, border: `1px solid ${S.border}`, padding: '12px 16px', marginBottom: 8 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: S.text, marginBottom: 8 }}>🏗 {o.name}</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-            {[
-              { label: 'Материалы', value: o.materials, color: S.yellow },
-              { label: 'ФОТ', value: o.fot, color: S.accent },
-              { label: 'Итого', value: o.materials + o.fot, color: S.green },
-            ].map((k, j) => (
+            {[{ label: 'Материалы', value: o.materials, color: S.yellow }, { label: 'ФОТ', value: o.fot, color: S.accent }, { label: 'Итого', value: o.materials + o.fot, color: S.green }].map((k, j) => (
               <div key={j} style={{ background: S.bg, borderRadius: 6, padding: '8px 10px' }}>
                 <div style={{ fontSize: 9, color: S.muted, textTransform: 'uppercase', marginBottom: 3 }}>{k.label}</div>
                 <div style={{ fontSize: 13, fontWeight: 700, color: k.color }}>{fmt(k.value)} ₽</div>
@@ -1750,9 +1747,7 @@ function ReportsTab({ objects }) {
           </div>
         </div>
       ))}
-      {Object.values(byObject).every(o => o.materials === 0 && o.fot === 0) && (
-        <div style={{ textAlign: 'center', padding: 30, color: S.muted }}>Нет данных за выбранный период</div>
-      )}
+      {Object.values(byObject).every(o => o.materials === 0 && o.fot === 0) && <div style={{ textAlign: 'center', padding: 30, color: S.muted }}>Нет данных за выбранный период</div>}
     </div>
   );
 }
@@ -1761,6 +1756,8 @@ function ReportsTab({ objects }) {
 function ToolsTab({ objects }) {
   const [tools, setTools] = useState([]);
   const [showForm, setShowForm] = useState(false);
+  const [editId, setEditId] = useState(null);
+  const [editForm, setEditForm] = useState({});
   const [filter, setFilter] = useState({ type_code: '', object_id: '', status: '' });
   const [form, setForm] = useState({ name: '', type_code: '', serial: '', location: '', object_id: '', status: 'available', notes: '' });
 
@@ -1773,6 +1770,13 @@ function ToolsTab({ objects }) {
     { code: 'СВ', name: 'Сварочный аппарат' }, { code: 'КМ', name: 'Компрессор' },
     { code: 'ЭК', name: 'Техника' }, { code: 'ПР', name: 'Прочее' },
   ];
+
+  const statusConfig = {
+    available: { label: 'На складе', color: S.green, bg: '#3fb95022' },
+    inuse:     { label: 'На объекте', color: S.blue, bg: '#58a6ff22' },
+    repair:    { label: 'В ремонте', color: S.yellow, bg: '#e3b34122' },
+    lost:      { label: 'Утерян', color: S.accent, bg: '#f7816622' },
+  };
 
   useEffect(() => { fetchTools(); }, []);
 
@@ -1792,6 +1796,16 @@ function ToolsTab({ objects }) {
     fetchTools();
   }
 
+  async function saveEdit(id) {
+    await supabase.from('tools').update({
+      name: editForm.name, serial: editForm.serial,
+      location: editForm.location, notes: editForm.notes,
+      status: editForm.status, object_id: editForm.object_id || null,
+    }).eq('id', id);
+    setEditId(null);
+    fetchTools();
+  }
+
   async function updateToolStatus(id, status, object_id) {
     await supabase.from('tools').update({ status, object_id: object_id || null }).eq('id', id);
     fetchTools();
@@ -1803,13 +1817,89 @@ function ToolsTab({ objects }) {
     fetchTools();
   }
 
+  async function exportToolsPDF() {
+    const { default: jsPDF } = await import('jspdf');
+    const { default: autoTable } = await import('jspdf-autotable');
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const t = s => { if(!s) return ''; const m={'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'zh','з':'z','и':'i','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'kh','ц':'ts','ч':'ch','ш':'sh','щ':'sch','ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya','А':'A','Б':'B','В':'V','Г':'G','Д':'D','Е':'E','Ж':'Zh','З':'Z','И':'I','К':'K','Л':'L','М':'M','Н':'N','О':'O','П':'P','Р':'R','С':'S','Т':'T','У':'U','Ф':'F','Х':'Kh','Ц':'Ts','Ч':'Ch','Ш':'Sh','Щ':'Sch','Ы':'Y','Э':'E','Ю':'Yu','Я':'Ya'}; return s.split('').map(c=>m[c]!==undefined?m[c]:c).join(''); };
+    const objName = id => objects.find(o => o.id === id)?.name || '—';
+    const dateStr = new Date().toLocaleDateString('ru-RU');
+
+    doc.setFontSize(13); doc.setFont('helvetica', 'bold');
+    doc.text(`BG Inzhiniring — Reestr instrumenta (${dateStr})`, 14, 15);
+
+    // Summary stats
+    doc.setFontSize(9); doc.setFont('helvetica', 'normal');
+    doc.text(`Vsego: ${tools.length}  |  Na sklade: ${tools.filter(t => t.status === 'available').length}  |  Na obektakh: ${tools.filter(t => t.status === 'inuse').length}  |  V remonte: ${tools.filter(t => t.status === 'repair').length}  |  Uteryano: ${tools.filter(t => t.status === 'lost').length}`, 14, 22);
+
+    const statusLabel = { available: 'Na sklade', inuse: 'Na obekte', repair: 'V remonte', lost: 'Uteryan' };
+    const rows = filtered.map(tool => [
+      tool.code || '',
+      t(tool.name),
+      statusLabel[tool.status] || tool.status,
+      tool.status === 'inuse' && tool.object_id ? t(objName(tool.object_id)) : (tool.status === 'available' && tool.location ? t(tool.location) : '—'),
+      tool.serial || '—',
+      t(tool.notes || ''),
+    ]);
+
+    autoTable(doc, {
+      head: [['Kod', 'Nazvanie', 'Status', 'Mesto', 'Ser. nomer', 'Primechanie']],
+      body: rows,
+      startY: 27,
+      theme: 'grid',
+      styles: { fontSize: 8, cellPadding: 2 },
+      headStyles: { fillColor: [22,27,34], textColor: [230,237,243], fontStyle: 'bold' },
+      columnStyles: {
+        0: { cellWidth: 28, fontStyle: 'bold' },
+        1: { cellWidth: 55 },
+        2: { cellWidth: 25, halign: 'center' },
+        3: { cellWidth: 45 },
+        4: { cellWidth: 28 },
+        5: { cellWidth: 55 },
+      },
+      didParseCell: (data) => {
+        if (data.section === 'body' && data.column.index === 2) {
+          const val = data.cell.raw;
+          if (val === 'Na sklade') { data.cell.styles.textColor = [63,185,80]; data.cell.styles.fontStyle = 'bold'; }
+          else if (val === 'Na obekte') { data.cell.styles.textColor = [88,166,255]; data.cell.styles.fontStyle = 'bold'; }
+          else if (val === 'V remonte') { data.cell.styles.textColor = [227,179,65]; data.cell.styles.fontStyle = 'bold'; }
+          else if (val === 'Uteryan') { data.cell.styles.textColor = [247,129,102]; data.cell.styles.fontStyle = 'bold'; }
+        }
+        if (data.row.index === rows.length - 1 && data.section === 'body') {
+          // last row normal
+        }
+      },
+    });
+
+    // Summary by object
+    const byObj = {};
+    tools.filter(t => t.status === 'inuse' && t.object_id).forEach(tool => {
+      if (!byObj[tool.object_id]) byObj[tool.object_id] = [];
+      byObj[tool.object_id].push(tool);
+    });
+
+    if (Object.keys(byObj).length > 0) {
+      const finalY = doc.lastAutoTable.finalY + 10;
+      doc.setFontSize(10); doc.setFont('helvetica', 'bold');
+      doc.text('Na obektakh:', 14, finalY);
+      let y = finalY + 6;
+      Object.entries(byObj).forEach(([objId, objTools]) => {
+        doc.setFontSize(9); doc.setFont('helvetica', 'bold');
+        doc.text(`${t(objName(objId))} (${objTools.length} ed.):`, 14, y);
+        y += 5;
+        objTools.forEach(tool => {
+          doc.setFont('helvetica', 'normal');
+          doc.text(`  ${tool.code} — ${t(tool.name)}`, 14, y);
+          y += 4;
+        });
+        y += 2;
+      });
+    }
+
+    doc.save(`reestr_instrumenta_${new Date().toISOString().slice(0,10)}.pdf`);
+  }
+
   const objName = id => objects.find(o => o.id === id)?.name || '—';
-  const statusConfig = {
-    available: { label: 'На складе', color: S.green, bg: '#3fb95022' },
-    inuse:     { label: 'На объекте', color: S.blue, bg: '#58a6ff22' },
-    repair:    { label: 'В ремонте', color: S.yellow, bg: '#e3b34122' },
-    lost:      { label: 'Утерян', color: S.accent, bg: '#f7816622' },
-  };
 
   const filtered = tools.filter(t => {
     if (filter.type_code && t.type_code !== filter.type_code) return false;
@@ -1831,7 +1921,10 @@ function ToolsTab({ objects }) {
             Всего: {tools.length} · На складе: {tools.filter(t => t.status === 'available').length} · На объектах: {tools.filter(t => t.status === 'inuse').length}
           </div>
         </div>
-        <button onClick={() => setShowForm(!showForm)} style={btnStyle(S.accent)}>+ Добавить</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={exportToolsPDF} style={{ ...btnStyle(S.green), fontSize: 12, padding: '8px 14px' }}>📄 PDF</button>
+          <button onClick={() => setShowForm(!showForm)} style={btnStyle(S.accent)}>+ Добавить</button>
+        </div>
       </div>
 
       {/* Фильтры */}
@@ -1865,11 +1958,11 @@ function ToolsTab({ objects }) {
             </select>
           </Field>
           <div style={{ background: S.faint, borderRadius: 8, padding: '8px 12px', marginBottom: 12, fontSize: 12, color: S.muted }}>
-            Код будет: <span style={{ color: S.blue, fontWeight: 700, fontFamily: 'monospace' }}>{previewCode}</span>
+            Код: <span style={{ color: S.blue, fontWeight: 700, fontFamily: 'monospace' }}>{previewCode}</span>
           </div>
           <Field label="Название *"><input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder='Перфоратор Bosch GBH 2-26' style={inp} /></Field>
           <Field label="Серийный номер"><input value={form.serial} onChange={e => setForm({ ...form, serial: e.target.value })} placeholder='SN-12345' style={inp} /></Field>
-          <Field label="Место хранения (склад)"><input value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} placeholder='Стеллаж А / Полка 2' style={inp} /></Field>
+          <Field label="Место хранения"><input value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} placeholder='Стеллаж А / Полка 2' style={inp} /></Field>
           <Field label="Статус">
             <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} style={sel}>
               {Object.entries(statusConfig).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
@@ -1883,7 +1976,7 @@ function ToolsTab({ objects }) {
               </select>
             </Field>
           )}
-          <Field label="Примечания"><input value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder='Требует заточки, куплен в 2023...' style={inp} /></Field>
+          <Field label="Примечания"><input value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder='Требует заточки...' style={inp} /></Field>
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={addTool} style={btnStyle(S.green)}>Сохранить</button>
             <button onClick={() => setShowForm(false)} style={btnStyle(S.faint)}>Отмена</button>
@@ -1902,25 +1995,54 @@ function ToolsTab({ objects }) {
         const sc = statusConfig[tool.status] || statusConfig.available;
         return (
           <div key={tool.id} style={{ background: S.panel, borderRadius: 12, border: `1px solid ${S.border}`, padding: '14px 16px', marginBottom: 10 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-                  <span style={{ background: S.faint, color: S.blue, borderRadius: 6, padding: '3px 8px', fontSize: 12, fontWeight: 800, fontFamily: 'monospace' }}>{tool.code}</span>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: S.text }}>{tool.name}</span>
-                </div>
-                <div style={{ display: 'flex', gap: 10, fontSize: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-                  <span style={{ background: sc.bg, color: sc.color, borderRadius: 5, padding: '2px 7px', fontWeight: 700 }}>{sc.label}</span>
-                  {tool.status === 'inuse' && tool.object_id && <span style={{ color: S.muted }}>🏗 {objName(tool.object_id)}</span>}
-                  {tool.status === 'available' && tool.location && <span style={{ color: S.muted }}>📍 {tool.location}</span>}
-                  {tool.serial && <span style={{ color: S.muted }}>🔢 {tool.serial}</span>}
-                  {tool.notes && <span style={{ color: S.muted }}>💬 {tool.notes}</span>}
+            {editId === tool.id ? (
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: S.blue, marginBottom: 12, fontFamily: 'monospace' }}>{tool.code}</div>
+                <Field label="Название"><input value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })} style={inp} /></Field>
+                <Field label="Серийный номер"><input value={editForm.serial || ''} onChange={e => setEditForm({ ...editForm, serial: e.target.value })} style={inp} /></Field>
+                <Field label="Место хранения"><input value={editForm.location || ''} onChange={e => setEditForm({ ...editForm, location: e.target.value })} placeholder='Стеллаж А / Полка 2' style={inp} /></Field>
+                <Field label="Статус">
+                  <select value={editForm.status} onChange={e => setEditForm({ ...editForm, status: e.target.value, object_id: e.target.value !== 'inuse' ? '' : editForm.object_id })} style={sel}>
+                    {Object.entries(statusConfig).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                  </select>
+                </Field>
+                {editForm.status === 'inuse' && (
+                  <Field label="На каком объекте">
+                    <select value={editForm.object_id || ''} onChange={e => setEditForm({ ...editForm, object_id: e.target.value })} style={sel}>
+                      <option value=''>Выберите объект</option>
+                      {objects.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                    </select>
+                  </Field>
+                )}
+                <Field label="Примечания"><input value={editForm.notes || ''} onChange={e => setEditForm({ ...editForm, notes: e.target.value })} style={inp} /></Field>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => saveEdit(tool.id)} style={btnStyle(S.green)}>Сохранить</button>
+                  <button onClick={() => setEditId(null)} style={btnStyle(S.faint)}>Отмена</button>
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0, marginLeft: 8, position: 'relative' }}>
-                <ToolStatusChanger tool={tool} objects={objects} onChange={updateToolStatus} />
-                <DelBtn onClick={() => deleteTool(tool.id)} />
+            ) : (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                    <span style={{ background: S.faint, color: S.blue, borderRadius: 6, padding: '3px 8px', fontSize: 12, fontWeight: 800, fontFamily: 'monospace' }}>{tool.code}</span>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: S.text }}>{tool.name}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 10, fontSize: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <span style={{ background: sc.bg, color: sc.color, borderRadius: 5, padding: '2px 7px', fontWeight: 700 }}>{sc.label}</span>
+                    {tool.status === 'inuse' && tool.object_id && <span style={{ color: S.muted }}>🏗 {objName(tool.object_id)}</span>}
+                    {tool.status === 'available' && tool.location && <span style={{ color: S.muted }}>📍 {tool.location}</span>}
+                    {tool.serial && <span style={{ color: S.muted }}>🔢 {tool.serial}</span>}
+                    {tool.notes && <span style={{ color: S.muted }}>💬 {tool.notes}</span>}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0, marginLeft: 8, position: 'relative' }}>
+                  <button onClick={() => { setEditId(tool.id); setEditForm({ name: tool.name, serial: tool.serial || '', location: tool.location || '', notes: tool.notes || '', status: tool.status, object_id: tool.object_id || '' }); }}
+                    style={{ background: 'none', border: `1px solid ${S.faint}`, color: S.muted, borderRadius: 6, padding: '4px 8px', fontSize: 12, cursor: 'pointer' }}>✏️</button>
+                  <ToolStatusChanger tool={tool} objects={objects} onChange={updateToolStatus} />
+                  <DelBtn onClick={() => deleteTool(tool.id)} />
+                </div>
               </div>
-            </div>
+            )}
           </div>
         );
       })}
@@ -1935,15 +2057,15 @@ function ToolStatusChanger({ tool, objects, onChange }) {
   if (!open) {
     return (
       <button onClick={() => setOpen(true)}
-        style={{ background: 'none', border: `1px solid ${S.faint}`, color: S.muted, borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}>
-        ⇄ Переместить
+        style={{ background: 'none', border: `1px solid ${S.faint}`, color: S.muted, borderRadius: 6, padding: '4px 8px', fontSize: 12, cursor: 'pointer' }}>
+        ⇄
       </button>
     );
   }
 
   return (
-    <div style={{ background: S.panel, border: `1px solid ${S.border}`, borderRadius: 10, padding: 12, position: 'absolute', zIndex: 50, right: 0, top: 30, minWidth: 200, boxShadow: '0 4px 20px #00000066' }}>
-      <div style={{ fontSize: 11, color: S.muted, marginBottom: 8, textTransform: 'uppercase' }}>Изменить статус</div>
+    <div style={{ background: S.panel, border: `1px solid ${S.border}`, borderRadius: 10, padding: 12, position: 'absolute', zIndex: 50, right: 0, top: 30, minWidth: 200, boxShadow: '0 4px 20px #00000088' }}>
+      <div style={{ fontSize: 11, color: S.muted, marginBottom: 8, textTransform: 'uppercase' }}>Статус</div>
       {[
         { key: 'available', label: '📦 На склад' },
         { key: 'repair', label: '🔨 В ремонт' },
@@ -1955,7 +2077,7 @@ function ToolStatusChanger({ tool, objects, onChange }) {
         </button>
       ))}
       <div style={{ borderTop: `1px solid ${S.faint}`, marginTop: 6, paddingTop: 6 }}>
-        <div style={{ fontSize: 11, color: S.muted, marginBottom: 6 }}>🏗 Отправить на объект:</div>
+        <div style={{ fontSize: 11, color: S.muted, marginBottom: 6 }}>🏗 На объект:</div>
         <select value={selectedObj} onChange={e => setSelectedObj(e.target.value)}
           style={{ ...sel, fontSize: 11, padding: '6px 8px', marginBottom: 6 }}>
           <option value=''>Выберите объект</option>
