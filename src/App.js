@@ -19,6 +19,12 @@ const TABS_ADMIN = [
   ...TABS_USER,
   { id: 'admin', label: '⚙️ Админ' },
 ];
+const TABS_ACCOUNTANT = [
+  { id: 'invoices', label: '🧾 Счета' },
+  { id: 'movements', label: '📋 Перемещения' },
+  { id: 'tasks', label: '📅 Задания' },
+  { id: 'tools', label: '🔧 Инструмент' },
+];
 
 const S = {
   bg: '#0d1117', panel: '#161b22', border: '#21262d',
@@ -114,7 +120,11 @@ export default function App() {
   const [userProfile, setUserProfile] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const isMobile = useIsMobile();
-  const TABS = userProfile?.role === 'admin' ? TABS_ADMIN : TABS_USER;
+  const TABS = userProfile?.role === 'admin'
+    ? TABS_ADMIN
+    : userProfile?.role === 'accountant'
+    ? TABS_ACCOUNTANT
+    : TABS_USER;
 
   useEffect(() => {
     // Check current session
@@ -144,7 +154,11 @@ export default function App() {
     const { data } = await supabase.from('user_profiles').select('*').eq('id', userId).single();
     setUserProfile(data);
     setAuthLoading(false);
-    if (data) fetchAll();
+    if (data) {
+      fetchAll();
+      // Set default tab based on role
+      if (data.role === 'accountant') setTab('invoices');
+    }
   }
 
   async function logAction(action) {
@@ -2482,7 +2496,7 @@ function UsersManager() {
     fetchUsers();
   }
 
-  const roleLabels = { admin: '👑 Администратор', user: '👤 Пользователь' };
+  const roleLabels = { admin: '👑 Администратор', user: '👤 Пользователь', accountant: '💼 Бухгалтер' };
 
   return (
     <div>
@@ -2505,6 +2519,7 @@ function UsersManager() {
           <Field label="Роль">
             <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} style={sel}>
               <option value='user'>👤 Пользователь</option>
+              <option value='accountant'>💼 Бухгалтер</option>
               <option value='admin'>👑 Администратор</option>
             </select>
           </Field>
