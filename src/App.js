@@ -27,7 +27,7 @@ const S = {
 };
 
 const btnStyle = (color) => ({ background: color, border: 'none', borderRadius: 8, color: '#fff', padding: '9px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer' });
-const inp = { background: '#0d1117', border: '1px solid #21262d', color: '#e6edf3', borderRadius: 8, padding: '9px 12px', fontSize: 13, width: '100%', boxSizing: 'border-box', outline: 'none' };
+const inp = { background: '#0d1117', border: '1px solid #21262d', color: '#e6edf3', borderRadius: 8, padding: '9px 12px', fontSize: 13, width: '100%', boxSizing: 'border-box', outline: 'none', colorScheme: 'dark' };
 const sel = { background: '#0d1117', border: '1px solid #21262d', color: '#e6edf3', borderRadius: 8, padding: '9px 12px', fontSize: 13, width: '100%', boxSizing: 'border-box', outline: 'none' };
 
 function Field({ label, children }) {
@@ -163,14 +163,18 @@ export default function App() {
 
   useEffect(() => { if (authUser) fetchAll(); }, []);
 
+  const [linkedUsers, setLinkedUsers] = useState([]);
+
   async function fetchAll() {
     setLoading(true);
-    const [{ data: objs }, { data: emps }] = await Promise.all([
+    const [{ data: objs }, { data: emps }, { data: profiles }] = await Promise.all([
       supabase.from('objects').select('*').order('created_at', { ascending: false }),
       supabase.from('employees').select('*').order('name'),
+      supabase.from('user_profiles').select('*, employees(id, name, role)').not('employee_id', 'is', null),
     ]);
     setObjects(objs || []);
     setEmployees(emps || []);
+    setLinkedUsers(profiles || []);
     setLoading(false);
   }
 
@@ -236,9 +240,9 @@ export default function App() {
           <>
             {tab === 'main' && <MainTab objects={objects} employees={employees} isMobile={isMobile} />}
             {tab === 'objects' && <ObjectsTab objects={objects} employees={employees} onRefresh={fetchAll} />}
-            {tab === 'movements' && <MovementsTab objects={objects} />}
+            {tab === 'movements' && <MovementsTab objects={objects} linkedUsers={linkedUsers} userProfile={userProfile} />}
             {tab === 'invoices' && <InvoicesTab objects={objects} />}
-            {tab === 'tasks' && <TasksTab objects={objects} employees={employees} />}
+            {tab === 'tasks' && <TasksTab objects={objects} employees={employees} userProfile={userProfile} />}
             {tab === 'reports' && <ReportsTab objects={objects} employees={employees} onRefreshEmployees={fetchEmployees} userProfile={userProfile} />}
             {tab === 'admin' && userProfile?.role === 'admin' && <AdminTab />}
             {tab === 'tools' && <ToolsTab objects={objects} />}
@@ -436,7 +440,7 @@ function EmployeesTab({ employees, onRefresh }) {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <div style={{ fontSize: 15, fontWeight: 700, color: S.text }}>Сотрудники</div>
-        <button onClick={() => setShowForm(!showForm)} style={btnStyle(S.accent)}>+ Добавить</button>
+        <button onClick={() => { setForm({...emptyForm, created_by: userProfile?.name || ''}); setShowForm(!showForm); }} style={btnStyle(S.accent)}>+ Добавить</button>
       </div>
 
       {showForm && (
@@ -1213,7 +1217,7 @@ function WorktimeReport({ objects, employees }) {
   );
 }
 // ─── ПЕРЕМЕЩЕНИЯ ───────────────────────────────────────────────────────────────
-function MovementsTab({ objects }) {
+function MovementsTab({ objects, linkedUsers, userProfile }) {
   const [movements, setMovements] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [filter, setFilter] = useState({ from: '', to: '', type: '', from_date: '', to_date: '' });
@@ -1228,7 +1232,7 @@ function MovementsTab({ objects }) {
   }
 
   async function addMovement() {
-    await supabase.from('movements').insert([{ ...form, from_object_id: form.from_object_id || null, to_object_id: form.to_object_id || null }]);
+    await supabase.from('movements').insert([{ ...form, from_object_id: form.from_object_id || null, to_object_id: form.to_object_id || null, receiver_id: form.receiver_id || null }]);
     setForm({ date: new Date().toISOString().slice(0, 10), from_object_id: '', to_object_id: '', type: 'material', note: '', author: '', file_url: '' });
     setShowForm(false);
     fetchMovements();
@@ -1240,7 +1244,16 @@ function MovementsTab({ objects }) {
     fetchMovements();
   }
 
+  async function confirmReceived(id) {
+    await supabase.from('movements').update({
+      received_by: userProfile?.name || 'Неизвестно',
+      received_at: new Date().toISOString(),
+    }).eq('id', id);
+    fetchMovements();
+  }
+
   const objName = id => objects.find(o => o.id === id)?.name || 'Склад';
+  const receiverName = id => linkedUsers.find(u => u.id === id)?.name || null;
   const filtered = movements.filter(m => {
     if (filter.from && m.from_object_id !== filter.from) return false;
     if (filter.to && m.to_object_id !== filter.to) return false;
@@ -1295,7 +1308,15 @@ function MovementsTab({ objects }) {
             </select>
           </Field>
           <Field label="Описание"><input value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} placeholder='Что везём...' style={inp} /></Field>
-          <Field label="Ответственный"><input value={form.author} onChange={e => setForm({ ...form, author: e.target.value })} placeholder='Иванов А.В.' style={inp} /></Field>
+          <Field label="Отправитель">
+            <input value={form.author} readOnly style={{ ...inp, color: S.muted, cursor: 'default' }} />
+          </Field>
+          <Field label="Получатель (из пользователей системы)">
+            <select value={form.receiver_id} onChange={e => setForm({ ...form, receiver_id: e.target.value })} style={sel}>
+              <option value=''>Не указан</option>
+              {linkedUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+          </Field>
           <Field label="Фото или файл накладной">
             <FileUpload onUpload={url => setForm({ ...form, file_url: url })} uploading={uploading} setUploading={setUploading} />
             <FilePreview url={form.file_url} onRemove={() => setForm({ ...form, file_url: '' })} />
@@ -1312,7 +1333,21 @@ function MovementsTab({ objects }) {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: S.text, marginBottom: 4 }}>{m.type === 'tool' ? '🔧' : '📦'} {m.note || '—'}</div>
-              <div style={{ fontSize: 12, color: S.muted }}>{objName(m.from_object_id)} → {objName(m.to_object_id)} · {m.date}{m.author && ` · 👤 ${m.author}`}</div>
+              <div style={{ fontSize: 12, color: S.muted, marginBottom: 4 }}>
+                {objName(m.from_object_id)} → {objName(m.to_object_id)} · {m.date}
+                {m.author && ` · ✉️ ${m.author}`}
+                {m.receiver_id && ` · 📬 ${receiverName(m.receiver_id) || '—'}`}
+              </div>
+              {m.received_at ? (
+                <div style={{ fontSize: 11, color: S.green, fontWeight: 600 }}>
+                  ✅ Получено: {m.received_by} · {new Date(m.received_at).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                </div>
+              ) : m.receiver_id && (
+                <button onClick={() => confirmReceived(m.id)}
+                  style={{ ...btnStyle(S.yellow), fontSize: 11, padding: '4px 10px', marginTop: 4 }}>
+                  ✍️ Подтвердить получение
+                </button>
+              )}
               <FilePreview url={m.file_url} />
             </div>
             <DelBtn onClick={() => deleteMovement(m.id)} />
@@ -1462,16 +1497,23 @@ function InvoicesTab({ objects }) {
   );
 }
 // ─── ЗАДАНИЯ ───────────────────────────────────────────────────────────────────
-function TasksTab({ objects, employees }) {
+function TasksTab({ objects, employees, userProfile }) {
   const [tasks, setTasks] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
+  const [linkedEmployees, setLinkedEmployees] = useState([]);
   const [filter, setFilter] = useState({ object_id: '', employee_id: '', status: '', priority: '' });
-  const emptyForm = { object_id: '', employee_id: '', title: '', description: '', deadline: '', priority: 'medium', status: 'new', created_by: '', file_url: '' };
+  const emptyForm = { object_id: '', employee_id: '', title: '', description: '', deadline: '', priority: 'medium', status: 'new', created_by: userProfile?.name || '', file_url: '' };
   const [form, setForm] = useState(emptyForm);
 
-  useEffect(() => { fetchTasks(); }, []);
+  useEffect(() => { fetchTasks(); fetchLinkedEmployees(); }, []);
+
+  async function fetchLinkedEmployees() {
+    // Получаем сотрудников у которых есть привязанный аккаунт
+    const { data } = await supabase.from('user_profiles').select('employee_id, name, employees(id, name, role)').not('employee_id', 'is', null);
+    setLinkedEmployees(data || []);
+  }
 
   async function fetchTasks() {
     const { data } = await supabase.from('tasks').select('*').order('deadline', { ascending: true });
