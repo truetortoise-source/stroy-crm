@@ -421,7 +421,7 @@ function EmployeesTab({ employees: initialEmployees, onRefresh }) {
   async function fetchLocal() {
     const { data } = await supabase.from('employees').select('*').order('name');
     setEmployees(data || []);
-    if (onRefresh) fetchLocal();
+    if (onRefresh) onRefresh();
   }
   const [showForm, setShowForm] = useState(false);
   const [showArchive, setShowArchive] = useState(false);
