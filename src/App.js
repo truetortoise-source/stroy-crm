@@ -413,7 +413,16 @@ function MainTab({ objects, employees, isMobile }) {
 }
 
 // ─── СОТРУДНИКИ ────────────────────────────────────────────────────────────────
-function EmployeesTab({ employees, onRefresh }) {
+function EmployeesTab({ employees: initialEmployees, onRefresh }) {
+  const [employees, setEmployees] = useState(initialEmployees || []);
+
+  useEffect(() => { fetchLocal(); }, []);
+
+  async function fetchLocal() {
+    const { data } = await supabase.from('employees').select('*').order('name');
+    setEmployees(data || []);
+    if (onRefresh) fetchLocal();
+  }
   const [showForm, setShowForm] = useState(false);
   const [showArchive, setShowArchive] = useState(false);
   const [editId, setEditId] = useState(null);
@@ -425,29 +434,29 @@ function EmployeesTab({ employees, onRefresh }) {
     await supabase.from('employees').insert([{ name: form.name.trim(), role: form.role.trim(), rate: +form.rate || 0, status: 'active' }]);
     setForm({ name: '', role: '', rate: '' });
     setShowForm(false);
-    onRefresh();
+    fetchLocal();
   }
 
   async function saveEdit(id) {
     await supabase.from('employees').update({ name: editForm.name, role: editForm.role, rate: +editForm.rate || 0 }).eq('id', id);
     setEditId(null);
-    onRefresh();
+    fetchLocal();
   }
 
   async function archiveEmployee(id) {
     await supabase.from('employees').update({ status: 'archived' }).eq('id', id);
-    onRefresh();
+    fetchLocal();
   }
 
   async function restoreEmployee(id) {
     await supabase.from('employees').update({ status: 'active' }).eq('id', id);
-    onRefresh();
+    fetchLocal();
   }
 
   async function deleteEmployee(id) {
     if (!window.confirm('Удалить навсегда?')) return;
     await supabase.from('employees').delete().eq('id', id);
-    onRefresh();
+    fetchLocal();
   }
 
   const active = employees.filter(e => e.status !== 'archived');
@@ -1886,7 +1895,7 @@ function ReportsTab({ objects, employees, onRefreshEmployees }) {
       </div>
       {subTab === 'finance' && <FinanceReport objects={objects} />}
       {subTab === 'worktime' && <WorktimeTab objects={objects} employees={employees} />}
-      {subTab === 'employees' && <EmployeesTab employees={employees} onRefresh={onRefreshEmployees} />}
+      {subTab === 'employees' && <EmployeesTab employees={employees} onRefresh={async () => { await onRefreshEmployees(); }} />}
     </div>
   );
 }
