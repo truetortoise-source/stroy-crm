@@ -466,7 +466,7 @@ function EmployeesTab({ employees: initialEmployees, onRefresh }) {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <div style={{ fontSize: 15, fontWeight: 700, color: S.text }}>Сотрудники</div>
-        <button onClick={() => { setForm({...emptyForm, created_by: userProfile?.name || ''}); setShowForm(!showForm); }} style={btnStyle(S.accent)}>+ Добавить</button>
+        <button onClick={() => setShowForm(!showForm)} style={btnStyle(S.accent)}>+ Добавить</button>
       </div>
 
       {showForm && (
