@@ -288,14 +288,17 @@ function MainTab({ objects, employees, isMobile }) {
   }, []);
 
   const fmt = v => new Intl.NumberFormat('ru-RU').format(v);
-  const totalMaterials = stats.invoices.reduce((s, i) => s + (i.amount || 0), 0);
-  const totalFOT = stats.timesheet.filter(t => t.status === 'worked').reduce((s, t) => s + (t.rate || 0), 0);
-  const totalContract = objects.reduce((s, o) => s + (o.contract_sum || 0), 0);
+  const activeObjects = objects.filter(o => o.status === 'active');
+  const activeObjectIds = new Set(activeObjects.map(o => o.id));
+
+  const totalMaterials = stats.invoices.filter(i => activeObjectIds.has(i.object_id)).reduce((s, i) => s + (i.amount || 0), 0);
+  const totalFOT = stats.timesheet.filter(t => t.status === 'worked' && activeObjectIds.has(t.object_id)).reduce((s, t) => s + (t.rate || 0), 0);
+  const totalContract = activeObjects.reduce((s, o) => s + (o.contract_sum || 0), 0);
   const totalLeft = totalContract - totalMaterials - totalFOT;
   const empName = id => employees.find(e => e.id === id)?.name || null;
 
   const todayByObject = {};
-  stats.todaySheet.forEach(e => {
+  stats.todaySheet.filter(e => activeObjectIds.has(e.object_id)).forEach(e => {
     if (!todayByObject[e.object_id]) todayByObject[e.object_id] = [];
     todayByObject[e.object_id].push(e);
   });
@@ -350,14 +353,14 @@ function MainTab({ objects, employees, isMobile }) {
         </div>
       )}
 
-      <div style={{ fontSize: 13, color: S.muted, marginBottom: 12 }}>Активных объектов: {objects.filter(o => o.status === 'active').length}</div>
+      <div style={{ fontSize: 13, color: S.muted, marginBottom: 12 }}>Активных объектов: {activeObjects.length}</div>
       {objects.length === 0 && (
         <div style={{ textAlign: 'center', padding: 60, color: S.muted }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>🏗</div>
           <div>Объектов пока нет. Добавьте первый во вкладке «Объекты»</div>
         </div>
       )}
-      {objects.map(o => {
+      {activeObjects.map(o => {
         const daysLeft = o.end_date ? Math.ceil((new Date(o.end_date) - new Date()) / 86400000) : null;
         const objMaterials = stats.invoices.filter(i => i.object_id === o.id).reduce((s, i) => s + (i.amount || 0), 0);
         const objFOT = stats.timesheet.filter(t => t.object_id === o.id && t.status === 'worked').reduce((s, t) => s + (t.rate || 0), 0);
@@ -581,6 +584,16 @@ function ObjectsTab({ objects, employees, onRefresh }) {
     onRefresh();
   }
 
+  async function completeObject(id) {
+    await supabase.from('objects').update({ status: 'completed' }).eq('id', id);
+    onRefresh();
+  }
+
+  async function restoreObject(id) {
+    await supabase.from('objects').update({ status: 'active' }).eq('id', id);
+    onRefresh();
+  }
+
   const fields = [
     { label: 'Название *', key: 'name', placeholder: 'ЖК Северный' },
     { label: 'Адрес', key: 'address', placeholder: 'ул. Ленина 12' },
@@ -590,6 +603,10 @@ function ObjectsTab({ objects, employees, onRefresh }) {
     { label: 'Сумма контракта (₽)', key: 'contract_sum', type: 'number', placeholder: '0' },
     { label: 'Бюджет (₽)', key: 'budget', type: 'number', placeholder: '0' },
   ];
+
+  const activeObjs = objects.filter(o => o.status !== 'completed');
+  const completedObjs = objects.filter(o => o.status === 'completed');
+  const [showArchive, setShowArchive] = useState(false);
 
   return (
     <div>
@@ -612,7 +629,7 @@ function ObjectsTab({ objects, employees, onRefresh }) {
         </div>
       )}
 
-      {objects.map(o => (
+      {activeObjs.map(o => (
         <div key={o.id} style={{ background: S.panel, borderRadius: 12, border: `1px solid ${S.border}`, marginBottom: 12, overflow: 'hidden' }}>
           <div style={{ padding: '16px 18px' }}>
             {editId === o.id ? (
@@ -647,6 +664,10 @@ function ObjectsTab({ objects, employees, onRefresh }) {
                     style={{ ...btnStyle(openTimesheetId === o.id ? S.blue : S.faint), fontSize: 12, padding: '6px 12px' }}>
                     🗓 Табель
                   </button>
+                  <button onClick={() => { if(window.confirm('Завершить объект? Он перейдёт в архив.')) completeObject(o.id); }}
+                    style={{ background: 'none', border: `1px solid ${S.faint}`, color: S.green, borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}>
+                    ✓ Завершить
+                  </button>
                   <DelBtn onClick={() => deleteObject(o.id)} />
                 </div>
               </div>
@@ -657,7 +678,39 @@ function ObjectsTab({ objects, employees, onRefresh }) {
           )}
         </div>
       ))}
-      {objects.length === 0 && <div style={{ textAlign: 'center', padding: 40, color: S.muted }}>Нет объектов</div>}
+      {activeObjs.length === 0 && completedObjs.length === 0 && <div style={{ textAlign: 'center', padding: 40, color: S.muted }}>Нет объектов</div>}
+
+      {/* Архив завершённых объектов */}
+      {completedObjs.length > 0 && (
+        <div style={{ marginTop: 20 }}>
+          <button onClick={() => setShowArchive(!showArchive)}
+            style={{ background: 'none', border: 'none', color: S.muted, fontSize: 13, cursor: 'pointer', marginBottom: 12 }}>
+            {showArchive ? '▼' : '▶'} Завершённые объекты ({completedObjs.length})
+          </button>
+          {showArchive && completedObjs.map(o => (
+            <div key={o.id} style={{ background: S.panel, borderRadius: 12, border: `1px solid ${S.faint}`, padding: '14px 18px', marginBottom: 8, opacity: 0.7 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: S.muted }}>{o.name}</div>
+                  <div style={{ fontSize: 12, color: S.muted, marginTop: 3, display: 'flex', gap: 12 }}>
+                    {o.address && <span>📍 {o.address}</span>}
+                    {o.foreman && <span>👷 {o.foreman}</span>}
+                    {o.contract_sum > 0 && <span>📄 {new Intl.NumberFormat('ru-RU').format(o.contract_sum)} ₽</span>}
+                    <span style={{ color: S.muted }}>✅ Завершён</span>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={() => restoreObject(o.id)}
+                    style={{ background: 'none', border: `1px solid ${S.faint}`, color: S.muted, borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}>
+                    ↩️ Восстановить
+                  </button>
+                  <DelBtn onClick={() => deleteObject(o.id)} />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
