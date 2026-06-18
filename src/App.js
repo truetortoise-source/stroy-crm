@@ -1842,13 +1842,38 @@ function ToolsTab({ objects }) {
   const [form, setForm] = useState({ name: '', type_code: '', serial: '', location: '', object_id: '', status: 'available', notes: '' });
 
   const toolTypes = [
-    { code: 'ПФ', name: 'Перфоратор' }, { code: 'ДР', name: 'Дрель' },
-    { code: 'УШМ', name: 'Болгарка (УШМ)' }, { code: 'ЛБЗ', name: 'Лобзик' },
-    { code: 'ЦП', name: 'Циркулярная пила' }, { code: 'ШМ', name: 'Шуруповёрт' },
-    { code: 'ФЗ', name: 'Фрезер' }, { code: 'ВД', name: 'Виброплита' },
-    { code: 'МФ', name: 'Мультиинструмент' }, { code: 'НК', name: 'Нивелир/Уровень' },
-    { code: 'СВ', name: 'Сварочный аппарат' }, { code: 'КМ', name: 'Компрессор' },
-    { code: 'ЭК', name: 'Техника' }, { code: 'ПР', name: 'Прочее' },
+    { code: 'PF',  name: 'Перфоратор' },
+    { code: 'DR',  name: 'Дрель ударная' },
+    { code: 'SM',  name: 'Шуруповёрт аккумуляторный' },
+    { code: 'SD',  name: 'Дрель-шуруповёрт' },
+    { code: 'USM', name: 'Болгарка (УШМ)' },
+    { code: 'LP',  name: 'Ленточная шлифмашина' },
+    { code: 'VS',  name: 'Вибрационная шлифмашина' },
+    { code: 'TP',  name: 'Торцовочная пила' },
+    { code: 'CP',  name: 'Циркулярная пила' },
+    { code: 'LBZ', name: 'Лобзик' },
+    { code: 'FZ',  name: 'Фрезер' },
+    { code: 'MF',  name: 'Мультиинструмент' },
+    { code: 'NK',  name: 'Нивелир / Уровень' },
+    { code: 'SV',  name: 'Сварочный аппарат' },
+    { code: 'PV',  name: 'Паяльная станция' },
+    { code: 'FN',  name: 'Фен строительный' },
+    { code: 'KL',  name: 'Клеевой пистолет' },
+    { code: 'NZ',  name: 'Гвоздезабивной пистолет' },
+    { code: 'KM',  name: 'Компрессор' },
+    { code: 'PN',  name: 'Пневмопистолет' },
+    { code: 'BP',  name: 'Бензопила' },
+    { code: 'BK',  name: 'Бензокусторез' },
+    { code: 'BT',  name: 'Бензотриммер / Газонокосилка' },
+    { code: 'BG',  name: 'Бензогенератор' },
+    { code: 'BM',  name: 'Бензомотопомпа' },
+    { code: 'EG',  name: 'Генератор электрический' },
+    { code: 'IG',  name: 'Генератор инверторный' },
+    { code: 'EK',  name: 'Экскаватор / Спецтехника' },
+    { code: 'PG',  name: 'Погрузчик' },
+    { code: 'VB',  name: 'Виброплита' },
+    { code: 'TR',  name: 'Трамбовка' },
+    { code: 'PR',  name: 'Прочее' },
   ];
 
   const statusConfig = {
@@ -1867,10 +1892,14 @@ function ToolsTab({ objects }) {
 
   async function addTool() {
     if (!form.name || !form.type_code) return;
-    const sameType = tools.filter(t => t.type_code === form.type_code);
-    const nextNum = String(sameType.length + 1).padStart(3, '0');
-    const code = `БГ/${form.type_code}-${nextNum}`;
-    await supabase.from('tools').insert([{ ...form, code, object_id: form.object_id || null }]);
+    // Get count from DB at save time to avoid duplicates
+    const { count } = await supabase.from('tools').select('*', { count: 'exact', head: true }).eq('type_code', form.type_code);
+    const nextNum = String((count || 0) + 1).padStart(3, '0');
+    const code = `BG/${form.type_code}-${nextNum}`;
+    // Check code not already taken (race condition safety)
+    const { data: existing } = await supabase.from('tools').select('id').eq('code', code);
+    const finalCode = existing && existing.length > 0 ? `BG/${form.type_code}-${String((count || 0) + 2).padStart(3, '0')}` : code;
+    await supabase.from('tools').insert([{ ...form, code: finalCode, object_id: form.object_id || null }]);
     setForm({ name: '', type_code: '', serial: '', location: '', object_id: '', status: 'available', notes: '' });
     setShowForm(false);
     fetchTools();
@@ -1989,8 +2018,8 @@ function ToolsTab({ objects }) {
   });
 
   const previewCode = form.type_code
-    ? `БГ/${form.type_code}-${String(tools.filter(t => t.type_code === form.type_code).length + 1).padStart(3, '0')}`
-    : 'БГ/ТИП-001';
+    ? `BG/${form.type_code}-${String(tools.filter(t => t.type_code === form.type_code).length + 1).padStart(3, '0')} (примерно)`
+    : 'BG/TIP-001';
 
   return (
     <div>
