@@ -1076,6 +1076,13 @@ function WorktimeReport({ objects, employees }) {
 
     const head = [['FIO', 'Obekt', ...days.map(d => String(d)), 'Dn', 'Summa']];
 
+    // Определяем выходные колонки (сб=6, вс=0)
+    const weekendCols = new Set();
+    days.forEach((d, i) => {
+      const dow = new Date(selectedMonth.year, selectedMonth.month, d).getDay();
+      if (dow === 0 || dow === 6) weekendCols.add(i + 2); // +2 за FIO и Obekt
+    });
+
     autoTable(doc, {
       head,
       body: rows,
@@ -1090,10 +1097,17 @@ function WorktimeReport({ objects, employees }) {
         [days.length + 3]: { cellWidth: 22 },
       },
       didParseCell: (data) => {
+        // Выходные — оранжевый заголовок
+        if (data.section === 'head' && weekendCols.has(data.column.index)) {
+          data.cell.styles.fillColor = [200, 100, 30];
+          data.cell.styles.textColor = [255, 255, 255];
+        }
+        // Статусы в теле таблицы
         if (data.cell.raw === 'R') { data.cell.styles.fillColor = [63, 185, 80]; data.cell.styles.textColor = [255,255,255]; }
         else if (data.cell.raw === 'B') { data.cell.styles.fillColor = [88, 166, 255]; data.cell.styles.textColor = [255,255,255]; }
         else if (data.cell.raw === 'O') { data.cell.styles.fillColor = [227, 179, 65]; data.cell.styles.textColor = [255,255,255]; }
         else if (data.cell.raw === 'A') { data.cell.styles.fillColor = [247, 129, 102]; data.cell.styles.textColor = [255,255,255]; }
+        // Строка итого
         if (data.row.index === rows.length - 1) {
           data.cell.styles.fillColor = [22, 27, 34];
           data.cell.styles.textColor = [227, 179, 65];
