@@ -1502,18 +1502,11 @@ function TasksTab({ objects, employees, userProfile }) {
   const [showForm, setShowForm] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
-  const [linkedEmployees, setLinkedEmployees] = useState([]);
   const [filter, setFilter] = useState({ object_id: '', employee_id: '', status: '', priority: '' });
-  const emptyForm = { object_id: '', employee_id: '', title: '', description: '', deadline: '', priority: 'medium', status: 'new', created_by: userProfile?.name || '', file_url: '' };
+  const emptyForm = { object_id: '', employee_ids: [], title: '', description: '', deadline: '', priority: 'medium', status: 'new', created_by: userProfile?.name || '', file_url: '' };
   const [form, setForm] = useState(emptyForm);
 
-  useEffect(() => { fetchTasks(); fetchLinkedEmployees(); }, []);
-
-  async function fetchLinkedEmployees() {
-    // Получаем сотрудников у которых есть привязанный аккаунт
-    const { data } = await supabase.from('user_profiles').select('employee_id, name, employees(id, name, role)').not('employee_id', 'is', null);
-    setLinkedEmployees(data || []);
-  }
+  useEffect(() => { fetchTasks(); }, []);
 
   async function fetchTasks() {
     const { data } = await supabase.from('tasks').select('*').order('deadline', { ascending: true });
@@ -1522,10 +1515,21 @@ function TasksTab({ objects, employees, userProfile }) {
 
   async function addTask() {
     if (!form.title) return;
-    await supabase.from('tasks').insert([{ ...form }]);
+    // Keep backward compat: store first selected as employee_id, all in employee_ids
+    const firstEmpId = form.employee_ids[0] || null;
+    await supabase.from('tasks').insert([{ ...form, employee_id: firstEmpId, employee_ids: form.employee_ids }]);
     setForm(emptyForm);
     setShowForm(false);
     fetchTasks();
+  }
+
+  function toggleTaskEmployee(empId) {
+    setForm(f => ({
+      ...f,
+      employee_ids: f.employee_ids.includes(empId)
+        ? f.employee_ids.filter(id => id !== empId)
+        : f.employee_ids.length < 3 ? [...f.employee_ids, empId] : f.employee_ids,
+    }));
   }
 
   async function updateStatus(id, status) {
@@ -1553,7 +1557,11 @@ function TasksTab({ objects, employees, userProfile }) {
   }
 
   const objName = id => objects.find(o => o.id === id)?.name || '—';
-  const empName = id => employees.find(e => e.id === id)?.name || '—';
+  const empName = id => {
+    const linked = linkedUsers.find(u => u.employees?.id === id);
+    if (linked) return linked.name;
+    return employees.find(e => e.id === id)?.name || '—';
+  };
 
   const priorityConfig = {
     high:   { label: 'Высокий',  color: '#ef4444', bg: '#ef444422', icon: '🔴' },
@@ -1648,11 +1656,24 @@ function TasksTab({ objects, employees, userProfile }) {
               {objects.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
             </select>
           </Field>
-          <Field label="Ответственный">
-            <select value={form.employee_id} onChange={e => setForm({ ...form, employee_id: e.target.value })} style={sel}>
-              <option value=''>Выберите сотрудника</option>
-              {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-            </select>
+          <Field label="Ответственные (до 3, только из пользователей системы)">
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {linkedUsers.filter(u => u.employees).map(u => (
+                <button key={u.employees.id} type="button"
+                  onClick={() => toggleTaskEmployee(u.employees.id)}
+                  style={{ ...btnStyle(form.employee_ids.includes(u.employees.id) ? S.blue : S.faint), fontSize: 12, padding: '6px 12px' }}>
+                  {u.name}
+                </button>
+              ))}
+              {linkedUsers.filter(u => u.employees).length === 0 && (
+                <div style={{ fontSize: 12, color: S.muted }}>Нет пользователей привязанных к сотрудникам</div>
+              )}
+            </div>
+            {form.employee_ids.length > 0 && (
+              <div style={{ fontSize: 11, color: S.muted, marginTop: 6 }}>
+                Выбрано: {form.employee_ids.map(id => linkedUsers.find(u => u.employees?.id === id)?.name).join(', ')}
+              </div>
+            )}
           </Field>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             <Field label="Приоритет">
@@ -1705,7 +1726,9 @@ function TasksTab({ objects, employees, userProfile }) {
                       {st.icon} {st.label}
                     </span>
                     {t.object_id && <span style={{ fontSize: 11, color: S.muted }}>🏗 {objName(t.object_id)}</span>}
-                    {t.employee_id && <span style={{ fontSize: 11, color: S.muted }}>👤 {empName(t.employee_id)}</span>}
+                    {(t.employee_ids?.length > 0 ? t.employee_ids : t.employee_id ? [t.employee_id] : []).map(id => (
+                      <span key={id} style={{ fontSize: 11, color: S.muted }}>👤 {empName(id)}</span>
+                    ))}
                     {t.deadline && <span style={{ fontSize: 11, color: overdue ? '#ef4444' : S.muted }}>📅 {t.deadline}{overdue ? ' ⚠️' : ''}</span>}
                   </div>
                 </div>
