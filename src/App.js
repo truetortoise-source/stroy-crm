@@ -899,17 +899,7 @@ function ObjectTimesheet({ object, employees }) {
 
 // ─── РАБОЧЕЕ ВРЕМЯ ────────────────────────────────────────────────────────────
 function WorktimeTab({ objects, employees }) {
-  const [subTab, setSubTab] = useState('today');
-  return (
-    <div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-        <button onClick={() => setSubTab('today')} style={{ ...btnStyle(subTab === 'today' ? S.blue : S.faint), fontSize: 13 }}>📋 Сводка сегодня</button>
-        <button onClick={() => setSubTab('report')} style={{ ...btnStyle(subTab === 'report' ? S.blue : S.faint), fontSize: 13 }}>📊 Отчёт за месяц</button>
-      </div>
-      {subTab === 'today' && <WorktimeToday objects={objects} employees={employees} />}
-      {subTab === 'report' && <WorktimeReport objects={objects} employees={employees} />}
-    </div>
-  );
+  return <WorktimeReport objects={objects} employees={employees} />;
 }
 
 function WorktimeToday({ objects, employees }) {
