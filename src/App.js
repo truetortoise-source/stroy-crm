@@ -15,6 +15,7 @@ const TABS = [
   { id: 'tasks', label: '📅 Задания' },
   { id: 'reports', label: '📊 Отчёты' },
   { id: 'worktime', label: '⏱ Рабочее время' },
+  { id: 'tools', label: '🔧 Инструмент' },
 ];
 
 const S = {
@@ -156,7 +157,7 @@ export default function App() {
           <div style={{ textAlign: 'center', padding: 60, color: S.muted }}>Загрузка...</div>
         ) : (
           <>
-            {tab === 'main' && <MainTab objects={objects} isMobile={isMobile} />}
+            {tab === 'main' && <MainTab objects={objects} employees={employees} isMobile={isMobile} />}
             {tab === 'objects' && <ObjectsTab objects={objects} employees={employees} onRefresh={fetchAll} />}
             {tab === 'employees' && <EmployeesTab employees={employees} onRefresh={fetchEmployees} />}
             {tab === 'movements' && <MovementsTab objects={objects} />}
@@ -164,6 +165,7 @@ export default function App() {
             {tab === 'tasks' && <TasksTab objects={objects} employees={employees} />}
             {tab === 'reports' && <ReportsTab objects={objects} />}
             {tab === 'worktime' && <WorktimeTab objects={objects} employees={employees} />}
+            {tab === 'tools' && <ToolsTab objects={objects} />}
           </>
         )}
       </div>
@@ -189,16 +191,18 @@ export default function App() {
 }
 
 // ─── ГЛАВНАЯ ───────────────────────────────────────────────────────────────────
-function MainTab({ objects, isMobile }) {
-  const [stats, setStats] = React.useState({ invoices: [], timesheet: [] });
+function MainTab({ objects, employees, isMobile }) {
+  const [stats, setStats] = React.useState({ invoices: [], timesheet: [], todaySheet: [] });
+  const today = new Date().toISOString().slice(0, 10);
 
   React.useEffect(() => {
     async function fetchStats() {
-      const [{ data: inv }, { data: ts }] = await Promise.all([
+      const [{ data: inv }, { data: ts }, { data: tod }] = await Promise.all([
         supabase.from('invoices').select('object_id, amount'),
         supabase.from('object_timesheet').select('object_id, rate, status'),
+        supabase.from('object_timesheet').select('*').eq('date', today),
       ]);
-      setStats({ invoices: inv || [], timesheet: ts || [] });
+      setStats({ invoices: inv || [], timesheet: ts || [], todaySheet: tod || [] });
     }
     fetchStats();
   }, []);
@@ -207,8 +211,14 @@ function MainTab({ objects, isMobile }) {
   const totalMaterials = stats.invoices.reduce((s, i) => s + (i.amount || 0), 0);
   const totalFOT = stats.timesheet.filter(t => t.status === 'worked').reduce((s, t) => s + (t.rate || 0), 0);
   const totalContract = objects.reduce((s, o) => s + (o.contract_sum || 0), 0);
-  const totalSpent = totalMaterials + totalFOT;
-  const totalLeft = totalContract - totalSpent;
+  const totalLeft = totalContract - totalMaterials - totalFOT;
+  const empName = id => employees.find(e => e.id === id)?.name || null;
+
+  const todayByObject = {};
+  stats.todaySheet.forEach(e => {
+    if (!todayByObject[e.object_id]) todayByObject[e.object_id] = [];
+    todayByObject[e.object_id].push(e);
+  });
 
   return (
     <div>
@@ -225,6 +235,41 @@ function MainTab({ objects, isMobile }) {
           </div>
         ))}
       </div>
+      {/* Сегодня на объектах */}
+      {Object.keys(todayByObject).length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: S.text, marginBottom: 10 }}>👷 Сегодня на объектах — {today}</div>
+          {Object.entries(todayByObject).map(([objId, entries]) => {
+            const obj = objects.find(o => o.id === objId);
+            const workedCount = entries.filter(e => e.status === 'worked').length;
+            const dayFOT = entries.filter(e => e.status === 'worked').reduce((s, e) => s + (e.rate || 0), 0);
+            const statusIcon = { worked: '✅', sick: '🤒', vacation: '🏖', absent: '❌' };
+            return (
+              <div key={objId} style={{ background: S.panel, borderRadius: 12, border: `1px solid ${S.border}`, marginBottom: 10, overflow: 'hidden' }}>
+                <div style={{ padding: '10px 14px', borderBottom: `1px solid ${S.faint}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: S.text }}>🏗 {obj?.name || '—'}</div>
+                  <div style={{ display: 'flex', gap: 12, fontSize: 12 }}>
+                    <span style={{ color: S.green }}>👷 {workedCount} чел.</span>
+                    <span style={{ color: S.yellow, fontWeight: 700 }}>{fmt(dayFOT)} ₽</span>
+                  </div>
+                </div>
+                <div style={{ padding: '8px 14px' }}>
+                  {entries.map(e => {
+                    const name = e.is_manual ? e.manual_name : empName(e.employee_id);
+                    return (
+                      <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: `1px solid ${S.faint}` }}>
+                        <span style={{ fontSize: 12, color: S.text }}>{statusIcon[e.status]} {name}</span>
+                        <span style={{ fontSize: 11, color: S.muted }}>{e.start_time?.slice(0,5)}–{e.end_time?.slice(0,5)}{e.rate > 0 ? ` · ${fmt(e.rate)} ₽` : ''}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       <div style={{ fontSize: 13, color: S.muted, marginBottom: 12 }}>Активных объектов: {objects.filter(o => o.status === 'active').length}</div>
       {objects.length === 0 && (
         <div style={{ textAlign: 'center', padding: 60, color: S.muted }}>
@@ -776,8 +821,79 @@ function ObjectTimesheet({ object, employees }) {
   );
 }
 
-// ─── РАБОЧЕЕ ВРЕМЯ (сводка) ────────────────────────────────────────────────────
+// ─── РАБОЧЕЕ ВРЕМЯ ────────────────────────────────────────────────────────────
 function WorktimeTab({ objects, employees }) {
+  const [subTab, setSubTab] = useState('today');
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+        <button onClick={() => setSubTab('today')} style={{ ...btnStyle(subTab === 'today' ? S.blue : S.faint), fontSize: 13 }}>📋 Сводка сегодня</button>
+        <button onClick={() => setSubTab('report')} style={{ ...btnStyle(subTab === 'report' ? S.blue : S.faint), fontSize: 13 }}>📊 Отчёт за месяц</button>
+      </div>
+      {subTab === 'today' && <WorktimeToday objects={objects} employees={employees} />}
+      {subTab === 'report' && <WorktimeReport objects={objects} employees={employees} />}
+    </div>
+  );
+}
+
+function WorktimeToday({ objects, employees }) {
+  const [entries, setEntries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const today = new Date().toISOString().slice(0, 10);
+  const fmt = v => new Intl.NumberFormat('ru-RU').format(v);
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      const { data } = await supabase.from('object_timesheet').select('*').eq('date', today);
+      setEntries(data || []);
+      setLoading(false);
+    }
+    load();
+  }, []);
+
+  const empName = id => employees.find(e => e.id === id)?.name || '—';
+  const objName = id => objects.find(o => o.id === id)?.name || '—';
+  const byObject = {};
+  entries.forEach(e => { if (!byObject[e.object_id]) byObject[e.object_id] = []; byObject[e.object_id].push(e); });
+  const totalWorked = entries.filter(e => e.status === 'worked').length;
+  const totalFOT = entries.filter(e => e.status === 'worked').reduce((s, e) => s + (e.rate || 0), 0);
+  const statusIcon = { worked: '✅', sick: '🤒', vacation: '🏖', absent: '❌' };
+
+  return (
+    <div>
+      <div style={{ fontSize: 14, fontWeight: 700, color: S.text, marginBottom: 4 }}>Сегодня — {today}</div>
+      <div style={{ fontSize: 12, color: S.muted, marginBottom: 16 }}>
+        Всего: {totalWorked} чел. · ФОТ за день: <span style={{ color: S.yellow, fontWeight: 700 }}>{fmt(totalFOT)} ₽</span>
+      </div>
+      {loading && <div style={{ textAlign: 'center', padding: 30, color: S.muted }}>Загрузка...</div>}
+      {!loading && entries.length === 0 && <div style={{ textAlign: 'center', padding: 40, color: S.muted }}>Нет записей на сегодня</div>}
+      {Object.entries(byObject).map(([objId, objEntries]) => {
+        const objWorked = objEntries.filter(e => e.status === 'worked').length;
+        const objFOT = objEntries.filter(e => e.status === 'worked').reduce((s, e) => s + (e.rate || 0), 0);
+        return (
+          <div key={objId} style={{ background: S.panel, borderRadius: 12, border: `1px solid ${S.border}`, marginBottom: 12, overflow: 'hidden' }}>
+            <div style={{ padding: '12px 16px', borderBottom: `1px solid ${S.faint}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: S.text }}>🏗 {objName(objId)}</div>
+              <div style={{ display: 'flex', gap: 12, fontSize: 12 }}>
+                <span style={{ color: S.green }}>👷 {objWorked} чел.</span>
+                <span style={{ color: S.yellow, fontWeight: 700 }}>{fmt(objFOT)} ₽</span>
+              </div>
+            </div>
+            {objEntries.map(e => (
+              <div key={e.id} style={{ padding: '10px 16px', borderBottom: `1px solid ${S.faint}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 13, color: S.text }}>{statusIcon[e.status]} {e.is_manual ? e.manual_name : empName(e.employee_id)}</span>
+                <span style={{ fontSize: 11, color: S.muted }}>{e.start_time?.slice(0,5)}–{e.end_time?.slice(0,5)}{e.rate > 0 ? <span style={{ color: S.yellow, marginLeft: 6, fontWeight: 700 }}> {fmt(e.rate)} ₽</span> : ''}</span>
+              </div>
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function WorktimeReport({ objects, employees }) {
   const today = new Date();
   const [selectedMonth, setSelectedMonth] = useState({ year: today.getFullYear(), month: today.getMonth() });
   const [filter, setFilter] = useState({ employee_ids: [] });
@@ -1637,6 +1753,223 @@ function ReportsTab({ objects }) {
       {Object.values(byObject).every(o => o.materials === 0 && o.fot === 0) && (
         <div style={{ textAlign: 'center', padding: 30, color: S.muted }}>Нет данных за выбранный период</div>
       )}
+    </div>
+  );
+}
+
+// ─── ИНСТРУМЕНТ ───────────────────────────────────────────────────────────────
+function ToolsTab({ objects }) {
+  const [tools, setTools] = useState([]);
+  const [showForm, setShowForm] = useState(false);
+  const [filter, setFilter] = useState({ type_code: '', object_id: '', status: '' });
+  const [form, setForm] = useState({ name: '', type_code: '', serial: '', location: '', object_id: '', status: 'available', notes: '' });
+
+  const toolTypes = [
+    { code: 'ПФ', name: 'Перфоратор' }, { code: 'ДР', name: 'Дрель' },
+    { code: 'УШМ', name: 'Болгарка (УШМ)' }, { code: 'ЛБЗ', name: 'Лобзик' },
+    { code: 'ЦП', name: 'Циркулярная пила' }, { code: 'ШМ', name: 'Шуруповёрт' },
+    { code: 'ФЗ', name: 'Фрезер' }, { code: 'ВД', name: 'Виброплита' },
+    { code: 'МФ', name: 'Мультиинструмент' }, { code: 'НК', name: 'Нивелир/Уровень' },
+    { code: 'СВ', name: 'Сварочный аппарат' }, { code: 'КМ', name: 'Компрессор' },
+    { code: 'ЭК', name: 'Техника' }, { code: 'ПР', name: 'Прочее' },
+  ];
+
+  useEffect(() => { fetchTools(); }, []);
+
+  async function fetchTools() {
+    const { data } = await supabase.from('tools').select('*').order('code');
+    setTools(data || []);
+  }
+
+  async function addTool() {
+    if (!form.name || !form.type_code) return;
+    const sameType = tools.filter(t => t.type_code === form.type_code);
+    const nextNum = String(sameType.length + 1).padStart(3, '0');
+    const code = `БГ/${form.type_code}-${nextNum}`;
+    await supabase.from('tools').insert([{ ...form, code, object_id: form.object_id || null }]);
+    setForm({ name: '', type_code: '', serial: '', location: '', object_id: '', status: 'available', notes: '' });
+    setShowForm(false);
+    fetchTools();
+  }
+
+  async function updateToolStatus(id, status, object_id) {
+    await supabase.from('tools').update({ status, object_id: object_id || null }).eq('id', id);
+    fetchTools();
+  }
+
+  async function deleteTool(id) {
+    if (!window.confirm('Удалить инструмент из реестра?')) return;
+    await supabase.from('tools').delete().eq('id', id);
+    fetchTools();
+  }
+
+  const objName = id => objects.find(o => o.id === id)?.name || '—';
+  const statusConfig = {
+    available: { label: 'На складе', color: S.green, bg: '#3fb95022' },
+    inuse:     { label: 'На объекте', color: S.blue, bg: '#58a6ff22' },
+    repair:    { label: 'В ремонте', color: S.yellow, bg: '#e3b34122' },
+    lost:      { label: 'Утерян', color: S.accent, bg: '#f7816622' },
+  };
+
+  const filtered = tools.filter(t => {
+    if (filter.type_code && t.type_code !== filter.type_code) return false;
+    if (filter.object_id && t.object_id !== filter.object_id) return false;
+    if (filter.status && t.status !== filter.status) return false;
+    return true;
+  });
+
+  const previewCode = form.type_code
+    ? `БГ/${form.type_code}-${String(tools.filter(t => t.type_code === form.type_code).length + 1).padStart(3, '0')}`
+    : 'БГ/ТИП-001';
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: S.text }}>🔧 Реестр инструмента</div>
+          <div style={{ fontSize: 12, color: S.muted, marginTop: 2 }}>
+            Всего: {tools.length} · На складе: {tools.filter(t => t.status === 'available').length} · На объектах: {tools.filter(t => t.status === 'inuse').length}
+          </div>
+        </div>
+        <button onClick={() => setShowForm(!showForm)} style={btnStyle(S.accent)}>+ Добавить</button>
+      </div>
+
+      {/* Фильтры */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', marginTop: 12 }}>
+        <select value={filter.type_code} onChange={e => setFilter({ ...filter, type_code: e.target.value })}
+          style={{ background: S.panel, border: `1px solid ${S.border}`, color: S.muted, borderRadius: 8, padding: '8px 12px', fontSize: 12 }}>
+          <option value=''>Все типы</option>
+          {toolTypes.map(t => <option key={t.code} value={t.code}>{t.name}</option>)}
+        </select>
+        <select value={filter.status} onChange={e => setFilter({ ...filter, status: e.target.value })}
+          style={{ background: S.panel, border: `1px solid ${S.border}`, color: S.muted, borderRadius: 8, padding: '8px 12px', fontSize: 12 }}>
+          <option value=''>Все статусы</option>
+          {Object.entries(statusConfig).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+        </select>
+        <select value={filter.object_id} onChange={e => setFilter({ ...filter, object_id: e.target.value })}
+          style={{ background: S.panel, border: `1px solid ${S.border}`, color: S.muted, borderRadius: 8, padding: '8px 12px', fontSize: 12 }}>
+          <option value=''>Все объекты</option>
+          {objects.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+        </select>
+        {(filter.type_code || filter.status || filter.object_id) &&
+          <button onClick={() => setFilter({ type_code: '', object_id: '', status: '' })} style={{ ...btnStyle(S.faint), fontSize: 12, padding: '6px 10px' }}>✕ Сброс</button>}
+      </div>
+
+      {/* Форма добавления */}
+      {showForm && (
+        <div style={{ background: S.panel, borderRadius: 12, border: `1px solid ${S.border}`, padding: 20, marginBottom: 16 }}>
+          <Field label="Тип инструмента *">
+            <select value={form.type_code} onChange={e => setForm({ ...form, type_code: e.target.value })} style={sel}>
+              <option value=''>Выберите тип</option>
+              {toolTypes.map(t => <option key={t.code} value={t.code}>{t.name} (БГ/{t.code}-XXX)</option>)}
+            </select>
+          </Field>
+          <div style={{ background: S.faint, borderRadius: 8, padding: '8px 12px', marginBottom: 12, fontSize: 12, color: S.muted }}>
+            Код будет: <span style={{ color: S.blue, fontWeight: 700, fontFamily: 'monospace' }}>{previewCode}</span>
+          </div>
+          <Field label="Название *"><input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder='Перфоратор Bosch GBH 2-26' style={inp} /></Field>
+          <Field label="Серийный номер"><input value={form.serial} onChange={e => setForm({ ...form, serial: e.target.value })} placeholder='SN-12345' style={inp} /></Field>
+          <Field label="Место хранения (склад)"><input value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} placeholder='Стеллаж А / Полка 2' style={inp} /></Field>
+          <Field label="Статус">
+            <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} style={sel}>
+              {Object.entries(statusConfig).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+            </select>
+          </Field>
+          {form.status === 'inuse' && (
+            <Field label="На каком объекте">
+              <select value={form.object_id} onChange={e => setForm({ ...form, object_id: e.target.value })} style={sel}>
+                <option value=''>Выберите объект</option>
+                {objects.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+              </select>
+            </Field>
+          )}
+          <Field label="Примечания"><input value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder='Требует заточки, куплен в 2023...' style={inp} /></Field>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={addTool} style={btnStyle(S.green)}>Сохранить</button>
+            <button onClick={() => setShowForm(false)} style={btnStyle(S.faint)}>Отмена</button>
+          </div>
+        </div>
+      )}
+
+      {filtered.length === 0 && (
+        <div style={{ textAlign: 'center', padding: 40, color: S.muted }}>
+          <div style={{ fontSize: 36, marginBottom: 12 }}>🔧</div>
+          <div>Инструментов нет. Добавьте первый.</div>
+        </div>
+      )}
+
+      {filtered.map(tool => {
+        const sc = statusConfig[tool.status] || statusConfig.available;
+        return (
+          <div key={tool.id} style={{ background: S.panel, borderRadius: 12, border: `1px solid ${S.border}`, padding: '14px 16px', marginBottom: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                  <span style={{ background: S.faint, color: S.blue, borderRadius: 6, padding: '3px 8px', fontSize: 12, fontWeight: 800, fontFamily: 'monospace' }}>{tool.code}</span>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: S.text }}>{tool.name}</span>
+                </div>
+                <div style={{ display: 'flex', gap: 10, fontSize: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span style={{ background: sc.bg, color: sc.color, borderRadius: 5, padding: '2px 7px', fontWeight: 700 }}>{sc.label}</span>
+                  {tool.status === 'inuse' && tool.object_id && <span style={{ color: S.muted }}>🏗 {objName(tool.object_id)}</span>}
+                  {tool.status === 'available' && tool.location && <span style={{ color: S.muted }}>📍 {tool.location}</span>}
+                  {tool.serial && <span style={{ color: S.muted }}>🔢 {tool.serial}</span>}
+                  {tool.notes && <span style={{ color: S.muted }}>💬 {tool.notes}</span>}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0, marginLeft: 8, position: 'relative' }}>
+                <ToolStatusChanger tool={tool} objects={objects} onChange={updateToolStatus} />
+                <DelBtn onClick={() => deleteTool(tool.id)} />
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ToolStatusChanger({ tool, objects, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [selectedObj, setSelectedObj] = useState(tool.object_id || '');
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)}
+        style={{ background: 'none', border: `1px solid ${S.faint}`, color: S.muted, borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}>
+        ⇄ Переместить
+      </button>
+    );
+  }
+
+  return (
+    <div style={{ background: S.panel, border: `1px solid ${S.border}`, borderRadius: 10, padding: 12, position: 'absolute', zIndex: 50, right: 0, top: 30, minWidth: 200, boxShadow: '0 4px 20px #00000066' }}>
+      <div style={{ fontSize: 11, color: S.muted, marginBottom: 8, textTransform: 'uppercase' }}>Изменить статус</div>
+      {[
+        { key: 'available', label: '📦 На склад' },
+        { key: 'repair', label: '🔨 В ремонт' },
+        { key: 'lost', label: '❌ Утерян' },
+      ].map(s => (
+        <button key={s.key} onClick={() => { onChange(tool.id, s.key, null); setOpen(false); }}
+          style={{ display: 'block', width: '100%', background: tool.status === s.key ? S.faint : 'none', border: 'none', color: tool.status === s.key ? S.blue : S.text, padding: '7px 8px', fontSize: 12, cursor: 'pointer', textAlign: 'left', borderRadius: 6, marginBottom: 2 }}>
+          {s.label}
+        </button>
+      ))}
+      <div style={{ borderTop: `1px solid ${S.faint}`, marginTop: 6, paddingTop: 6 }}>
+        <div style={{ fontSize: 11, color: S.muted, marginBottom: 6 }}>🏗 Отправить на объект:</div>
+        <select value={selectedObj} onChange={e => setSelectedObj(e.target.value)}
+          style={{ ...sel, fontSize: 11, padding: '6px 8px', marginBottom: 6 }}>
+          <option value=''>Выберите объект</option>
+          {objects.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+        </select>
+        <button onClick={() => { if (selectedObj) { onChange(tool.id, 'inuse', selectedObj); setOpen(false); } }}
+          style={{ ...btnStyle(S.blue), fontSize: 11, padding: '6px 12px', width: '100%', opacity: selectedObj ? 1 : 0.4 }}>
+          Отправить
+        </button>
+      </div>
+      <button onClick={() => setOpen(false)}
+        style={{ display: 'block', width: '100%', background: 'none', border: 'none', color: S.muted, padding: '6px', fontSize: 11, cursor: 'pointer', marginTop: 4 }}>
+        Отмена
+      </button>
     </div>
   );
 }
