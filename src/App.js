@@ -2265,16 +2265,22 @@ function AdminTab() {
 
 function UsersManager() {
   const [users, setUsers] = useState([]);
+  const [employees, setEmployees] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'user' });
+  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'user', employee_id: '' });
   const [error, setError] = useState('');
 
-  useEffect(() => { fetchUsers(); }, []);
+  useEffect(() => { fetchUsers(); fetchEmployees(); }, []);
 
   async function fetchUsers() {
-    const { data } = await supabase.from('user_profiles').select('*').order('created_at');
+    const { data } = await supabase.from('user_profiles').select('*, employees(name, role)').order('created_at');
     setUsers(data || []);
+  }
+
+  async function fetchEmployees() {
+    const { data } = await supabase.from('employees').select('*').eq('status', 'active').order('name');
+    setEmployees(data || []);
   }
 
   async function createUser() {
@@ -2298,6 +2304,7 @@ function UsersManager() {
         id: data.user.id,
         name: form.name,
         role: form.role,
+        employee_id: form.employee_id || null,
       }]);
 
       // Restore admin session
@@ -2308,7 +2315,7 @@ function UsersManager() {
         });
       }
 
-      setForm({ name: '', email: '', password: '', role: 'user' });
+      setForm({ name: '', email: '', password: '', role: 'user', employee_id: '' });
       setShowForm(false);
       fetchUsers();
     } catch (e) {
@@ -2350,6 +2357,12 @@ function UsersManager() {
               <option value='admin'>👑 Администратор</option>
             </select>
           </Field>
+          <Field label="Привязать к сотруднику (необязательно)">
+            <select value={form.employee_id} onChange={e => setForm({ ...form, employee_id: e.target.value })} style={sel}>
+              <option value=''>Не привязывать</option>
+              {employees.map(e => <option key={e.id} value={e.id}>{e.name}{e.role ? ` — ${e.role}` : ''}</option>)}
+            </select>
+          </Field>
           {error && <div style={{ background: '#ef444422', border: '1px solid #ef444444', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#ef4444', marginBottom: 12 }}>{error}</div>}
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={createUser} disabled={loading} style={btnStyle(S.green)}>{loading ? 'Создание...' : 'Создать'}</button>
@@ -2369,8 +2382,9 @@ function UsersManager() {
         <div key={u.id} style={{ background: S.panel, borderRadius: 12, border: `1px solid ${S.border}`, padding: '14px 18px', marginBottom: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <div style={{ fontSize: 14, fontWeight: 700, color: S.text }}>{u.name}</div>
-            <div style={{ fontSize: 12, color: S.muted, marginTop: 3, display: 'flex', gap: 12 }}>
+            <div style={{ fontSize: 12, color: S.muted, marginTop: 3, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
               <span>{roleLabels[u.role] || u.role}</span>
+              {u.employees && <span>👤 {u.employees.name}{u.employees.role ? ` (${u.employees.role})` : ''}</span>}
               <span>📅 {new Date(u.created_at).toLocaleDateString('ru-RU')}</span>
             </div>
           </div>
