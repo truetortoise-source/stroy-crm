@@ -6,7 +6,7 @@ const supabase = createClient(
   process.env.REACT_APP_SUPABASE_ANON_KEY
 );
 
-const TABS = [
+const TABS_USER = [
   { id: 'main', label: '🏠 Главная' },
   { id: 'objects', label: '🏗 Объекты' },
   { id: 'movements', label: '📋 Перемещения' },
@@ -14,6 +14,10 @@ const TABS = [
   { id: 'tasks', label: '📅 Задания' },
   { id: 'reports', label: '📊 Отчёты' },
   { id: 'tools', label: '🔧 Инструмент' },
+];
+const TABS_ADMIN = [
+  ...TABS_USER,
+  { id: 'admin', label: '⚙️ Админ' },
 ];
 
 const S = {
@@ -106,9 +110,58 @@ export default function App() {
   const [objects, setObjects] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [authUser, setAuthUser] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const isMobile = useIsMobile();
+  const TABS = userProfile?.role === 'admin' ? TABS_ADMIN : TABS_USER;
 
-  useEffect(() => { fetchAll(); }, []);
+  useEffect(() => {
+    // Check current session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        setAuthUser(session.user);
+        fetchProfile(session.user.id);
+      } else {
+        setAuthLoading(false);
+      }
+    });
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) {
+        setAuthUser(session.user);
+        fetchProfile(session.user.id);
+      } else {
+        setAuthUser(null);
+        setUserProfile(null);
+        setAuthLoading(false);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  async function fetchProfile(userId) {
+    const { data } = await supabase.from('user_profiles').select('*').eq('id', userId).single();
+    setUserProfile(data);
+    setAuthLoading(false);
+    if (data) fetchAll();
+  }
+
+  async function logAction(action) {
+    if (!authUser || !userProfile) return;
+    await supabase.from('audit_log').insert([{
+      user_id: authUser.id,
+      user_name: userProfile.name,
+      action,
+    }]);
+  }
+
+  async function handleSignOut() {
+    await logAction('Вышел из системы');
+    await supabase.auth.signOut();
+  }
+
+  useEffect(() => { if (authUser) fetchAll(); }, []);
 
   async function fetchAll() {
     setLoading(true);
@@ -126,20 +179,46 @@ export default function App() {
     setEmployees(data || []);
   }
 
+  if (authLoading) {
+    return (
+      <div style={{ fontFamily: 'Arial, sans-serif', background: S.bg, minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: S.text }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>🏗</div>
+          <div style={{ color: S.muted }}>Загрузка...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!authUser || !userProfile) {
+    return <LoginScreen />;
+  }
+
   return (
     <div style={{ fontFamily: 'Arial, sans-serif', background: S.bg, minHeight: '100vh', color: S.text }}>
-      <div style={{ background: S.panel, borderBottom: `1px solid ${S.border}`, padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ background: S.panel, borderBottom: `1px solid ${S.border}`, padding: '12px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
           <div style={{ fontSize: 11, color: S.muted, letterSpacing: '1px', textTransform: 'uppercase' }}>БГ ИНЖИНИРИНГ</div>
-          <div style={{ fontSize: 18, fontWeight: 800, color: S.text }}>🏗 БГ Инжиниринг</div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: S.text }}>🏗 БГ Инжиниринг</div>
         </div>
-        <div style={{ fontSize: 12, color: S.green }}>● Подключено</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 12, color: S.text, fontWeight: 600 }}>{userProfile?.name}</div>
+            <div style={{ fontSize: 10, color: userProfile?.role === 'admin' ? S.yellow : S.muted }}>
+              {userProfile?.role === 'admin' ? '👑 Администратор' : '👤 Пользователь'}
+            </div>
+          </div>
+          <button onClick={handleSignOut}
+            style={{ background: 'none', border: `1px solid ${S.faint}`, color: S.muted, borderRadius: 8, padding: '6px 12px', fontSize: 12, cursor: 'pointer' }}>
+            Выйти
+          </button>
+        </div>
       </div>
 
       {!isMobile && (
         <div style={{ background: S.panel, borderBottom: `1px solid ${S.border}`, padding: '0 16px', display: 'flex', gap: 4, overflowX: 'auto' }}>
           {TABS.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)} style={{
+            <button key={t.id} onClick={() => { setTab(t.id); logAction(`Открыл вкладку: ${t.label}`); }} style={{
               background: 'none', border: 'none',
               borderBottom: tab === t.id ? `2px solid ${S.accent}` : '2px solid transparent',
               color: tab === t.id ? S.accent : S.muted,
@@ -160,7 +239,8 @@ export default function App() {
             {tab === 'movements' && <MovementsTab objects={objects} />}
             {tab === 'invoices' && <InvoicesTab objects={objects} />}
             {tab === 'tasks' && <TasksTab objects={objects} employees={employees} />}
-            {tab === 'reports' && <ReportsTab objects={objects} employees={employees} onRefreshEmployees={fetchEmployees} />}
+            {tab === 'reports' && <ReportsTab objects={objects} employees={employees} onRefreshEmployees={fetchEmployees} userProfile={userProfile} />}
+            {tab === 'admin' && userProfile?.role === 'admin' && <AdminTab />}
             {tab === 'tools' && <ToolsTab objects={objects} />}
           </>
         )}
@@ -2092,6 +2172,270 @@ function ToolStatusChanger({ tool, objects, onChange }) {
         style={{ display: 'block', width: '100%', background: 'none', border: 'none', color: S.muted, padding: '6px', fontSize: 11, cursor: 'pointer', marginTop: 4 }}>
         Отмена
       </button>
+    </div>
+  );
+}
+
+// ─── ЭКРАН ВХОДА ──────────────────────────────────────────────────────────────
+function LoginScreen() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  async function handleLogin() {
+    if (!email || !password) return;
+    setLoading(true);
+    setError('');
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      setError('Неверный email или пароль');
+    }
+    setLoading(false);
+  }
+
+  return (
+    <div style={{ fontFamily: 'Arial, sans-serif', background: S.bg, minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: S.text }}>
+      <div style={{ width: '100%', maxWidth: 380, padding: '0 20px' }}>
+        <div style={{ textAlign: 'center', marginBottom: 32 }}>
+          <div style={{ fontSize: 48, marginBottom: 12 }}>🏗</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: S.text }}>БГ Инжиниринг</div>
+          <div style={{ fontSize: 13, color: S.muted, marginTop: 4 }}>CRM система</div>
+        </div>
+
+        <div style={{ background: S.panel, borderRadius: 16, border: `1px solid ${S.border}`, padding: 28 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: S.text, marginBottom: 20 }}>Вход в систему</div>
+
+          <Field label="Email">
+            <input
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleLogin()}
+              placeholder="ivan@bgeng.ru"
+              style={inp}
+              autoComplete="email"
+            />
+          </Field>
+
+          <Field label="Пароль">
+            <input
+              type="password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleLogin()}
+              placeholder="••••••••"
+              style={inp}
+              autoComplete="current-password"
+            />
+          </Field>
+
+          {error && (
+            <div style={{ background: '#ef444422', border: '1px solid #ef444444', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#ef4444', marginBottom: 16 }}>
+              {error}
+            </div>
+          )}
+
+          <button
+            onClick={handleLogin}
+            disabled={loading}
+            style={{ ...btnStyle(S.accent), width: '100%', padding: '12px', fontSize: 14, opacity: loading ? 0.7 : 1 }}>
+            {loading ? '⏳ Вход...' : 'Войти'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── АДМИН ПАНЕЛЬ ─────────────────────────────────────────────────────────────
+function AdminTab() {
+  const [subTab, setSubTab] = useState('users');
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+        <button onClick={() => setSubTab('users')} style={{ ...btnStyle(subTab === 'users' ? S.blue : S.faint), fontSize: 12, padding: '8px 14px' }}>👥 Пользователи</button>
+        <button onClick={() => setSubTab('log')} style={{ ...btnStyle(subTab === 'log' ? S.blue : S.faint), fontSize: 12, padding: '8px 14px' }}>📋 Журнал действий</button>
+      </div>
+      {subTab === 'users' && <UsersManager />}
+      {subTab === 'log' && <AuditLog />}
+    </div>
+  );
+}
+
+function UsersManager() {
+  const [users, setUsers] = useState([]);
+  const [showForm, setShowForm] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'user' });
+  const [error, setError] = useState('');
+
+  useEffect(() => { fetchUsers(); }, []);
+
+  async function fetchUsers() {
+    const { data } = await supabase.from('user_profiles').select('*').order('created_at');
+    setUsers(data || []);
+  }
+
+  async function createUser() {
+    if (!form.name || !form.email || !form.password) return;
+    setLoading(true);
+    setError('');
+    try {
+      // Save current session
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+
+      // Sign up new user
+      const { data, error } = await supabase.auth.signUp({
+        email: form.email,
+        password: form.password,
+      });
+      if (error) throw error;
+      if (!data.user) throw new Error('Не удалось создать пользователя');
+
+      // Create profile for new user
+      await supabase.from('user_profiles').insert([{
+        id: data.user.id,
+        name: form.name,
+        role: form.role,
+      }]);
+
+      // Restore admin session
+      if (currentSession) {
+        await supabase.auth.setSession({
+          access_token: currentSession.access_token,
+          refresh_token: currentSession.refresh_token,
+        });
+      }
+
+      setForm({ name: '', email: '', password: '', role: 'user' });
+      setShowForm(false);
+      fetchUsers();
+    } catch (e) {
+      setError(e.message || 'Ошибка создания пользователя');
+    }
+    setLoading(false);
+  }
+
+  async function deleteUser(userId) {
+    if (!window.confirm('Удалить пользователя? Он не сможет войти в систему.')) return;
+    await supabase.from('user_profiles').delete().eq('id', userId);
+    // Note: deleting from auth.users requires service_role key
+    fetchUsers();
+  }
+
+  const roleLabels = { admin: '👑 Администратор', user: '👤 Пользователь' };
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: S.text }}>Пользователи системы</div>
+        <button onClick={() => setShowForm(!showForm)} style={btnStyle(S.accent)}>+ Добавить</button>
+      </div>
+
+      {showForm && (
+        <div style={{ background: S.panel, borderRadius: 12, border: `1px solid ${S.border}`, padding: 20, marginBottom: 16 }}>
+          <Field label="Имя (как будет отображаться)">
+            <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder='Иванов Иван' style={inp} />
+          </Field>
+          <Field label="Email (для входа)">
+            <input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder='ivan@bgeng.ru' style={inp} />
+          </Field>
+          <Field label="Пароль">
+            <input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder='Минимум 6 символов' style={inp} />
+          </Field>
+          <Field label="Роль">
+            <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} style={sel}>
+              <option value='user'>👤 Пользователь</option>
+              <option value='admin'>👑 Администратор</option>
+            </select>
+          </Field>
+          {error && <div style={{ background: '#ef444422', border: '1px solid #ef444444', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#ef4444', marginBottom: 12 }}>{error}</div>}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={createUser} disabled={loading} style={btnStyle(S.green)}>{loading ? 'Создание...' : 'Создать'}</button>
+            <button onClick={() => { setShowForm(false); setError(''); }} style={btnStyle(S.faint)}>Отмена</button>
+          </div>
+        </div>
+      )}
+
+      {users.length === 0 && (
+        <div style={{ textAlign: 'center', padding: 40, color: S.muted }}>
+          <div style={{ fontSize: 36, marginBottom: 12 }}>👥</div>
+          <div>Нет пользователей. Добавьте первого.</div>
+        </div>
+      )}
+
+      {users.map(u => (
+        <div key={u.id} style={{ background: S.panel, borderRadius: 12, border: `1px solid ${S.border}`, padding: '14px 18px', marginBottom: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: S.text }}>{u.name}</div>
+            <div style={{ fontSize: 12, color: S.muted, marginTop: 3, display: 'flex', gap: 12 }}>
+              <span>{roleLabels[u.role] || u.role}</span>
+              <span>📅 {new Date(u.created_at).toLocaleDateString('ru-RU')}</span>
+            </div>
+          </div>
+          <DelBtn onClick={() => deleteUser(u.id)} />
+        </div>
+      ))}
+
+      <div style={{ background: S.faint, borderRadius: 10, padding: '12px 16px', marginTop: 16, fontSize: 12, color: S.muted }}>
+        💡 После создания пользователь может войти через страницу входа используя свой email и пароль.
+      </div>
+    </div>
+  );
+}
+
+function AuditLog() {
+  const [logs, setLogs] = useState([]);
+  const [filter, setFilter] = useState({ user_name: '', from_date: '', to_date: '' });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => { fetchLogs(); }, [filter]);
+
+  async function fetchLogs() {
+    setLoading(true);
+    let q = supabase.from('audit_log').select('*').order('created_at', { ascending: false }).limit(200);
+    if (filter.from_date) q = q.gte('created_at', filter.from_date);
+    if (filter.to_date) q = q.lte('created_at', filter.to_date + 'T23:59:59');
+    const { data } = await q;
+    let result = data || [];
+    if (filter.user_name) result = result.filter(l => l.user_name?.toLowerCase().includes(filter.user_name.toLowerCase()));
+    setLogs(result);
+    setLoading(false);
+  }
+
+  const uniqueUsers = [...new Set(logs.map(l => l.user_name).filter(Boolean))];
+
+  return (
+    <div>
+      <div style={{ fontSize: 15, fontWeight: 700, color: S.text, marginBottom: 16 }}>Журнал действий</div>
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+        <input value={filter.user_name} onChange={e => setFilter({ ...filter, user_name: e.target.value })} placeholder='Поиск по имени...'
+          style={{ background: S.panel, border: `1px solid ${S.border}`, color: S.text, borderRadius: 8, padding: '8px 12px', fontSize: 12 }} />
+        <input type='date' value={filter.from_date} onChange={e => setFilter({ ...filter, from_date: e.target.value })}
+          style={{ background: S.panel, border: `1px solid ${S.border}`, color: S.muted, borderRadius: 8, padding: '8px 12px', fontSize: 12 }} />
+        <input type='date' value={filter.to_date} onChange={e => setFilter({ ...filter, to_date: e.target.value })}
+          style={{ background: S.panel, border: `1px solid ${S.border}`, color: S.muted, borderRadius: 8, padding: '8px 12px', fontSize: 12 }} />
+        {(filter.user_name || filter.from_date || filter.to_date) &&
+          <button onClick={() => setFilter({ user_name: '', from_date: '', to_date: '' })} style={{ ...btnStyle(S.faint), fontSize: 12, padding: '6px 10px' }}>✕ Сброс</button>}
+      </div>
+
+      {loading && <div style={{ textAlign: 'center', padding: 30, color: S.muted }}>Загрузка...</div>}
+
+      {!loading && logs.length === 0 && <div style={{ textAlign: 'center', padding: 40, color: S.muted }}>Нет записей</div>}
+
+      {logs.map(log => (
+        <div key={log.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', borderBottom: `1px solid ${S.faint}`, background: S.panel, borderRadius: 8, marginBottom: 4 }}>
+          <div style={{ flex: 1 }}>
+            <span style={{ fontSize: 13, color: S.blue, fontWeight: 600 }}>{log.user_name}</span>
+            <span style={{ fontSize: 13, color: S.text, marginLeft: 8 }}>{log.action}</span>
+          </div>
+          <div style={{ fontSize: 11, color: S.muted, flexShrink: 0, marginLeft: 12 }}>
+            {new Date(log.created_at).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
