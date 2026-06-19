@@ -426,19 +426,19 @@ function EmployeesTab({ employees: initialEmployees, onRefresh }) {
   const [showForm, setShowForm] = useState(false);
   const [showArchive, setShowArchive] = useState(false);
   const [editId, setEditId] = useState(null);
-  const [form, setForm] = useState({ name: '', role: '', rate: '' });
+  const [form, setForm] = useState({ name: '', role: '', rate: '', department: '' });
   const [editForm, setEditForm] = useState({});
 
   async function addEmployee() {
     if (!form.name.trim()) return;
-    await supabase.from('employees').insert([{ name: form.name.trim(), role: form.role.trim(), rate: +form.rate || 0, status: 'active' }]);
-    setForm({ name: '', role: '', rate: '' });
+    await supabase.from('employees').insert([{ name: form.name.trim(), role: form.role.trim(), rate: +form.rate || 0, status: 'active', department: form.department || null }]);
+    setForm({ name: '', role: '', rate: '', department: '' });
     setShowForm(false);
     fetchLocal();
   }
 
   async function saveEdit(id) {
-    await supabase.from('employees').update({ name: editForm.name, role: editForm.role, rate: +editForm.rate || 0 }).eq('id', id);
+    await supabase.from('employees').update({ name: editForm.name, role: editForm.role, rate: +editForm.rate || 0, department: editForm.department || null }).eq('id', id);
     setEditId(null);
     fetchLocal();
   }
@@ -477,6 +477,17 @@ function EmployeesTab({ employees: initialEmployees, onRefresh }) {
           <Field label="Роль / должность">
             <input value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} placeholder='Каменщик' style={inp} />
           </Field>
+          <Field label="Подразделение">
+            <select value={form.department || ''} onChange={e => setForm({ ...form, department: e.target.value })} style={sel}>
+              <option value=''>Не указано</option>
+              <option value='Общестроительные работы'>Общестроительные работы</option>
+              <option value='Электромонтажные работы'>Электромонтажные работы</option>
+              <option value='Сантехнические работы'>Сантехнические работы</option>
+              <option value='Отделочные работы'>Отделочные работы</option>
+              <option value='Кровельные работы'>Кровельные работы</option>
+              <option value='ИТР'>ИТР</option>
+            </select>
+          </Field>
           <Field label="Ставка в день (₽)">
             <input type="number" value={form.rate} onChange={e => setForm({ ...form, rate: e.target.value })} placeholder='2500' style={inp} />
           </Field>
@@ -505,6 +516,17 @@ function EmployeesTab({ employees: initialEmployees, onRefresh }) {
               <Field label="Должность">
                 <input value={editForm.role} onChange={ev => setEditForm({ ...editForm, role: ev.target.value })} style={inp} />
               </Field>
+              <Field label="Подразделение">
+                <select value={editForm.department || ''} onChange={ev => setEditForm({ ...editForm, department: ev.target.value })} style={sel}>
+                  <option value=''>Не указано</option>
+                  <option value='Общестроительные работы'>Общестроительные работы</option>
+                  <option value='Электромонтажные работы'>Электромонтажные работы</option>
+                  <option value='Сантехнические работы'>Сантехнические работы</option>
+                  <option value='Отделочные работы'>Отделочные работы</option>
+                  <option value='Кровельные работы'>Кровельные работы</option>
+                  <option value='ИТР'>ИТР</option>
+                </select>
+              </Field>
               <Field label="Ставка в день (₽)">
                 <input type="number" value={editForm.rate} onChange={ev => setEditForm({ ...editForm, rate: ev.target.value })} style={inp} />
               </Field>
@@ -523,11 +545,12 @@ function EmployeesTab({ employees: initialEmployees, onRefresh }) {
                 <div style={{ fontSize: 14, fontWeight: 700, color: S.text }}>{e.name}</div>
                 <div style={{ fontSize: 12, color: S.muted, marginTop: 3, display: 'flex', gap: 12 }}>
                   {e.role && <span>💼 {e.role}</span>}
+                  {e.department && <span>🏢 {e.department}</span>}
                   {e.rate > 0 && <span style={{ color: S.yellow }}>💰 {new Intl.NumberFormat('ru-RU').format(e.rate)} ₽/день</span>}
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                <button onClick={() => { setEditId(e.id); setEditForm({ name: e.name, role: e.role || '', rate: e.rate || '' }); }}
+                <button onClick={() => { setEditId(e.id); setEditForm({ name: e.name, role: e.role || '', rate: e.rate || '', department: e.department || '' }); }}
                   style={{ background: 'none', border: `1px solid ${S.faint}`, color: S.muted, borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}>
                   ✏️ Изменить
                 </button>
@@ -1361,9 +1384,9 @@ function MovementsTab({ objects, linkedUsers, userProfile }) {
           <option value='tool'>Инструмент</option>
         </select>
         <input type='date' value={filter.from_date} onChange={e => setFilter({ ...filter, from_date: e.target.value })}
-          style={{ background: S.panel, border: `1px solid ${S.border}`, color: S.muted, borderRadius: 8, padding: '8px 12px', fontSize: 12 }} />
+          style={{ background: S.panel, border: `1px solid ${S.border}`, color: S.muted, borderRadius: 8, padding: '8px 12px', fontSize: 12, colorScheme: 'dark' }} />
         <input type='date' value={filter.to_date} onChange={e => setFilter({ ...filter, to_date: e.target.value })}
-          style={{ background: S.panel, border: `1px solid ${S.border}`, color: S.muted, borderRadius: 8, padding: '8px 12px', fontSize: 12 }} />
+          style={{ background: S.panel, border: `1px solid ${S.border}`, color: S.muted, borderRadius: 8, padding: '8px 12px', fontSize: 12, colorScheme: 'dark' }} />
       </div>
 
       {showForm && (
@@ -1454,6 +1477,22 @@ function InvoiceForm({ data, setData, onSave, onCancel, uploading, setUploading,
       <Field label="Сумма (₽)">
         <input type="number" value={data.amount} onChange={e => setData({ ...data, amount: e.target.value })} placeholder='0' style={inp} />
       </Field>
+      <Field label="Раздел работ">
+        <select value={data.section || ''} onChange={e => setData({ ...data, section: e.target.value })} style={sel}>
+          <option value=''>Не указан</option>
+          <option value='Общестроительные работы'>Общестроительные работы</option>
+          <option value='Электромонтажные работы'>Электромонтажные работы</option>
+          <option value='Сантехнические работы (ВиК)'>Сантехнические работы (ВиК)</option>
+          <option value='Отопление и вентиляция'>Отопление и вентиляция</option>
+          <option value='Кондиционирование'>Кондиционирование</option>
+          <option value='Слаботочные системы (СКС)'>Слаботочные системы (СКС)</option>
+          <option value='Пожарная и охранная сигнализация'>Пожарная и охранная сигнализация</option>
+          <option value='Архитектура и фасад'>Архитектура и фасад</option>
+          <option value='Благоустройство'>Благоустройство</option>
+          <option value='Материалы'>Материалы</option>
+          <option value='Прочее'>Прочее</option>
+        </select>
+      </Field>
       <Field label="Примечание">
         <input value={data.note} onChange={e => setData({ ...data, note: e.target.value })} placeholder='Цемент, арматура...' style={inp} />
       </Field>
@@ -1482,8 +1521,8 @@ function InvoicesTab({ objects }) {
   const [uploading, setUploading] = useState(false);
   const [editId, setEditId] = useState(null);
   const [editForm, setEditForm] = useState({});
-  const [filter, setFilter] = useState({ object_id: '', supplier: '', from_date: '', to_date: '' });
-  const emptyForm = { object_id: '', date: new Date().toISOString().slice(0, 10), amount: '', note: '', supplier: '', status: 'pending', file_url: '' };
+  const [filter, setFilter] = useState({ object_id: '', supplier: '', section: '', from_date: '', to_date: '' });
+  const emptyForm = { object_id: '', date: new Date().toISOString().slice(0, 10), amount: '', note: '', supplier: '', section: '', status: 'pending', file_url: '' };
   const [form, setForm] = useState(emptyForm);
 
   useEffect(() => { fetchInvoices(); }, []);
@@ -1516,6 +1555,7 @@ function InvoicesTab({ objects }) {
   const filtered = invoices.filter(inv => {
     if (filter.object_id && inv.object_id !== filter.object_id) return false;
     if (filter.supplier && !(inv.supplier || '').toLowerCase().includes(filter.supplier.toLowerCase())) return false;
+    if (filter.section && inv.section !== filter.section) return false;
     if (filter.from_date && inv.date < filter.from_date) return false;
     if (filter.to_date && inv.date > filter.to_date) return false;
     return true;
@@ -1537,12 +1577,27 @@ function InvoicesTab({ objects }) {
         </select>
         <input value={filter.supplier} onChange={e => setFilter({ ...filter, supplier: e.target.value })} placeholder='Поставщик...'
           style={{ background: S.panel, border: `1px solid ${S.border}`, color: S.text, borderRadius: 8, padding: '8px 12px', fontSize: 12 }} />
+        <select value={filter.section || ''} onChange={e => setFilter({ ...filter, section: e.target.value })}
+          style={{ background: S.panel, border: `1px solid ${S.border}`, color: S.muted, borderRadius: 8, padding: '8px 12px', fontSize: 12 }}>
+          <option value=''>Все разделы</option>
+          <option value='Общестроительные работы'>Общестроительные работы</option>
+          <option value='Электромонтажные работы'>Электромонтажные работы</option>
+          <option value='Сантехнические работы (ВиК)'>Сантехнические (ВиК)</option>
+          <option value='Отопление и вентиляция'>Отопление и вентиляция</option>
+          <option value='Кондиционирование'>Кондиционирование</option>
+          <option value='Слаботочные системы (СКС)'>СКС</option>
+          <option value='Пожарная и охранная сигнализация'>ПОС</option>
+          <option value='Архитектура и фасад'>Архитектура</option>
+          <option value='Благоустройство'>Благоустройство</option>
+          <option value='Материалы'>Материалы</option>
+          <option value='Прочее'>Прочее</option>
+        </select>
         <input type='date' value={filter.from_date} onChange={e => setFilter({ ...filter, from_date: e.target.value })}
-          style={{ background: S.panel, border: `1px solid ${S.border}`, color: S.muted, borderRadius: 8, padding: '8px 12px', fontSize: 12 }} />
+          style={{ background: S.panel, border: `1px solid ${S.border}`, color: S.muted, borderRadius: 8, padding: '8px 12px', fontSize: 12, colorScheme: 'dark' }} />
         <input type='date' value={filter.to_date} onChange={e => setFilter({ ...filter, to_date: e.target.value })}
-          style={{ background: S.panel, border: `1px solid ${S.border}`, color: S.muted, borderRadius: 8, padding: '8px 12px', fontSize: 12 }} />
-        {(filter.object_id || filter.supplier || filter.from_date || filter.to_date) &&
-          <button onClick={() => setFilter({ object_id: '', supplier: '', from_date: '', to_date: '' })} style={{ ...btnStyle(S.faint), fontSize: 12, padding: '6px 10px' }}>✕ Сброс</button>}
+          style={{ background: S.panel, border: `1px solid ${S.border}`, color: S.muted, borderRadius: 8, padding: '8px 12px', fontSize: 12, colorScheme: 'dark' }} />
+        {(filter.object_id || filter.supplier || filter.section || filter.from_date || filter.to_date) &&
+          <button onClick={() => setFilter({ object_id: '', supplier: '', section: '', from_date: '', to_date: '' })} style={{ ...btnStyle(S.faint), fontSize: 12, padding: '6px 10px' }}>✕ Сброс</button>}
       </div>
 
       {showForm && <InvoiceForm data={form} setData={setForm} onSave={addInvoice} onCancel={() => setShowForm(false)} uploading={uploading} setUploading={setUploading} objects={objects} />}
@@ -1562,6 +1617,7 @@ function InvoicesTab({ objects }) {
                   </div>
                   <div style={{ fontSize: 12, color: S.muted, marginBottom: 4, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                     {inv.supplier && <span>🏭 {inv.supplier}</span>}
+                    {inv.section && <span>📂 {inv.section}</span>}
                     <span>{inv.note || '—'}</span>
                     <span>📅 {inv.date}</span>
                     <span style={{ background: `${st}22`, color: st, borderRadius: 5, padding: '2px 7px', fontWeight: 700 }}>{statusLabels[inv.status]}</span>
@@ -1913,7 +1969,9 @@ function ReportsTab({ objects, employees, onRefreshEmployees }) {
 function FinanceReport({ objects }) {
   const [invoices, setInvoices] = useState([]);
   const [timesheet, setTimesheet] = useState([]);
+  const [employees, setEmployees] = useState([]);
   const [filter, setFilter] = useState({ object_id: '', from_date: '', to_date: '' });
+  const [expandedObj, setExpandedObj] = useState(null);
 
   useEffect(() => { fetchData(); }, [filter]);
 
@@ -1923,18 +1981,37 @@ function FinanceReport({ objects }) {
     if (filter.object_id) { iq = iq.eq('object_id', filter.object_id); tq = tq.eq('object_id', filter.object_id); }
     if (filter.from_date) { iq = iq.gte('date', filter.from_date); tq = tq.gte('date', filter.from_date); }
     if (filter.to_date) { iq = iq.lte('date', filter.to_date); tq = tq.lte('date', filter.to_date); }
-    const [{ data: inv }, { data: ts }] = await Promise.all([iq, tq]);
-    setInvoices(inv || []); setTimesheet(ts || []);
+    const [{ data: inv }, { data: ts }, { data: emps }] = await Promise.all([iq, tq, supabase.from('employees').select('id, name, department')]);
+    setInvoices(inv || []); setTimesheet(ts || []); setEmployees(emps || []);
   }
 
   const fmt = v => new Intl.NumberFormat('ru-RU').format(v);
   const totalMaterials = invoices.reduce((s, i) => s + (i.amount || 0), 0);
   const totalFOT = timesheet.filter(t => t.status === 'worked').reduce((s, t) => s + (t.rate || 0), 0);
   const totalAll = totalMaterials + totalFOT;
+
+  // By object
   const byObject = {};
-  objects.forEach(o => { byObject[o.id] = { name: o.name, materials: 0, fot: 0 }; });
-  invoices.forEach(i => { if (byObject[i.object_id]) byObject[i.object_id].materials += (i.amount || 0); });
-  timesheet.filter(t => t.status === 'worked').forEach(t => { if (byObject[t.object_id]) byObject[t.object_id].fot += (t.rate || 0); });
+  objects.forEach(o => { byObject[o.id] = { name: o.name, materials: 0, fot: 0, invoices: [], timesheet: [] }; });
+  invoices.forEach(i => { if (byObject[i.object_id]) { byObject[i.object_id].materials += (i.amount || 0); byObject[i.object_id].invoices.push(i); } });
+  timesheet.filter(t => t.status === 'worked').forEach(t => { if (byObject[t.object_id]) { byObject[t.object_id].fot += (t.rate || 0); byObject[t.object_id].timesheet.push(t); } });
+
+  // By section (invoices)
+  const bySection = {};
+  invoices.forEach(i => {
+    const sec = i.section || 'Без раздела';
+    if (!bySection[sec]) bySection[sec] = 0;
+    bySection[sec] += (i.amount || 0);
+  });
+
+  // By department (FOT)
+  const byDept = {};
+  timesheet.filter(t => t.status === 'worked').forEach(t => {
+    const emp = employees.find(e => e.id === t.employee_id);
+    const dept = emp?.department || 'Без подразделения';
+    if (!byDept[dept]) byDept[dept] = 0;
+    byDept[dept] += (t.rate || 0);
+  });
 
   return (
     <div>
@@ -1946,17 +2023,19 @@ function FinanceReport({ objects }) {
             <option value=''>Все объекты</option>{objects.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
           </select>
           <input type='date' value={filter.from_date} onChange={e => setFilter({ ...filter, from_date: e.target.value })}
-            style={{ background: S.bg, border: `1px solid ${S.border}`, color: S.text, borderRadius: 8, padding: '8px 12px', fontSize: 12 }} />
+            style={{ background: S.bg, border: `1px solid ${S.border}`, color: S.text, borderRadius: 8, padding: '8px 12px', fontSize: 12, colorScheme: 'dark' }} />
           <input type='date' value={filter.to_date} onChange={e => setFilter({ ...filter, to_date: e.target.value })}
-            style={{ background: S.bg, border: `1px solid ${S.border}`, color: S.text, borderRadius: 8, padding: '8px 12px', fontSize: 12 }} />
+            style={{ background: S.bg, border: `1px solid ${S.border}`, color: S.text, borderRadius: 8, padding: '8px 12px', fontSize: 12, colorScheme: 'dark' }} />
           {(filter.object_id || filter.from_date || filter.to_date) &&
             <button onClick={() => setFilter({ object_id: '', from_date: '', to_date: '' })} style={{ ...btnStyle(S.faint), fontSize: 12, padding: '6px 10px' }}>✕ Сброс</button>}
         </div>
       </div>
+
+      {/* Итого */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12, marginBottom: 20 }}>
         {[
-          { label: '🧾 Расходы по счетам (материалы)', value: totalMaterials, sub: `${invoices.length} счетов`, color: S.yellow },
-          { label: '👷 Расходы ФОТ', value: totalFOT, sub: `${timesheet.filter(t => t.status === 'worked').length} записей`, color: S.accent },
+          { label: '🧾 Расходы по счетам', value: totalMaterials, sub: `${invoices.length} счетов`, color: S.yellow },
+          { label: '👷 ФОТ', value: totalFOT, sub: `${timesheet.filter(t => t.status === 'worked').length} записей`, color: S.accent },
           { label: '📊 Итого расходов', value: totalAll, sub: 'материалы + ФОТ', color: S.green },
         ].map((k, i) => (
           <div key={i} style={{ background: S.panel, borderRadius: 12, border: `1px solid ${S.border}`, padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1968,20 +2047,92 @@ function FinanceReport({ objects }) {
           </div>
         ))}
       </div>
-      <div style={{ fontSize: 13, fontWeight: 700, color: S.text, marginBottom: 10 }}>По объектам</div>
-      {Object.values(byObject).filter(o => o.materials > 0 || o.fot > 0).map((o, i) => (
-        <div key={i} style={{ background: S.panel, borderRadius: 10, border: `1px solid ${S.border}`, padding: '12px 16px', marginBottom: 8 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: S.text, marginBottom: 8 }}>🏗 {o.name}</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-            {[{ label: 'Материалы', value: o.materials, color: S.yellow }, { label: 'ФОТ', value: o.fot, color: S.accent }, { label: 'Итого', value: o.materials + o.fot, color: S.green }].map((k, j) => (
-              <div key={j} style={{ background: S.bg, borderRadius: 6, padding: '8px 10px' }}>
-                <div style={{ fontSize: 9, color: S.muted, textTransform: 'uppercase', marginBottom: 3 }}>{k.label}</div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: k.color }}>{fmt(k.value)} ₽</div>
-              </div>
-            ))}
-          </div>
+
+      {/* По разделам счетов */}
+      {Object.keys(bySection).length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: S.text, marginBottom: 10 }}>🧾 Счета по разделам</div>
+          {Object.entries(bySection).sort((a,b) => b[1]-a[1]).map(([sec, amt]) => (
+            <div key={sec} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 14px', background: S.panel, borderRadius: 8, marginBottom: 4, border: `1px solid ${S.border}` }}>
+              <span style={{ fontSize: 13, color: S.text }}>📂 {sec}</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: S.yellow }}>{fmt(amt)} ₽</span>
+            </div>
+          ))}
         </div>
-      ))}
+      )}
+
+      {/* По подразделениям ФОТ */}
+      {Object.keys(byDept).length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: S.text, marginBottom: 10 }}>👷 ФОТ по подразделениям</div>
+          {Object.entries(byDept).sort((a,b) => b[1]-a[1]).map(([dept, amt]) => (
+            <div key={dept} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 14px', background: S.panel, borderRadius: 8, marginBottom: 4, border: `1px solid ${S.border}` }}>
+              <span style={{ fontSize: 13, color: S.text }}>🏢 {dept}</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: S.accent }}>{fmt(amt)} ₽</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* По объектам с раскрытием */}
+      <div style={{ fontSize: 13, fontWeight: 700, color: S.text, marginBottom: 10 }}>🏗 По объектам</div>
+      {Object.entries(byObject).filter(([,o]) => o.materials > 0 || o.fot > 0).map(([objId, o]) => {
+        const isExpanded = expandedObj === objId;
+        // Sections within this object
+        const objSections = {};
+        o.invoices.forEach(i => {
+          const sec = i.section || 'Без раздела';
+          if (!objSections[sec]) objSections[sec] = 0;
+          objSections[sec] += (i.amount || 0);
+        });
+        const objDepts = {};
+        o.timesheet.forEach(t => {
+          const emp = employees.find(e => e.id === t.employee_id);
+          const dept = emp?.department || 'Без подразделения';
+          if (!objDepts[dept]) objDepts[dept] = 0;
+          objDepts[dept] += (t.rate || 0);
+        });
+        return (
+          <div key={objId} style={{ background: S.panel, borderRadius: 10, border: `1px solid ${S.border}`, marginBottom: 8, overflow: 'hidden' }}>
+            <div onClick={() => setExpandedObj(isExpanded ? null : objId)}
+              style={{ padding: '12px 16px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: S.text }}>🏗 {o.name}</div>
+              <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+                <span style={{ fontSize: 12, color: S.yellow }}>{fmt(o.materials)} ₽ матер.</span>
+                <span style={{ fontSize: 12, color: S.accent }}>{fmt(o.fot)} ₽ ФОТ</span>
+                <span style={{ fontSize: 12, color: S.green, fontWeight: 700 }}>{fmt(o.materials + o.fot)} ₽</span>
+                <span style={{ color: S.muted, fontSize: 11 }}>{isExpanded ? '▲' : '▼'}</span>
+              </div>
+            </div>
+            {isExpanded && (
+              <div style={{ borderTop: `1px solid ${S.faint}`, padding: '12px 16px', background: '#0d111755' }}>
+                {Object.keys(objSections).length > 0 && (
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 11, color: S.muted, textTransform: 'uppercase', marginBottom: 6 }}>По разделам счетов</div>
+                    {Object.entries(objSections).sort((a,b) => b[1]-a[1]).map(([sec, amt]) => (
+                      <div key={sec} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: `1px solid ${S.faint}` }}>
+                        <span style={{ fontSize: 12, color: S.text }}>📂 {sec}</span>
+                        <span style={{ fontSize: 12, color: S.yellow, fontWeight: 700 }}>{fmt(amt)} ₽</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {Object.keys(objDepts).length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 11, color: S.muted, textTransform: 'uppercase', marginBottom: 6 }}>ФОТ по подразделениям</div>
+                    {Object.entries(objDepts).sort((a,b) => b[1]-a[1]).map(([dept, amt]) => (
+                      <div key={dept} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: `1px solid ${S.faint}` }}>
+                        <span style={{ fontSize: 12, color: S.text }}>🏢 {dept}</span>
+                        <span style={{ fontSize: 12, color: S.accent, fontWeight: 700 }}>{fmt(amt)} ₽</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
       {Object.values(byObject).every(o => o.materials === 0 && o.fot === 0) && <div style={{ textAlign: 'center', padding: 30, color: S.muted }}>Нет данных за выбранный период</div>}
     </div>
   );
@@ -2613,9 +2764,9 @@ function AuditLog() {
         <input value={filter.user_name} onChange={e => setFilter({ ...filter, user_name: e.target.value })} placeholder='Поиск по имени...'
           style={{ background: S.panel, border: `1px solid ${S.border}`, color: S.text, borderRadius: 8, padding: '8px 12px', fontSize: 12 }} />
         <input type='date' value={filter.from_date} onChange={e => setFilter({ ...filter, from_date: e.target.value })}
-          style={{ background: S.panel, border: `1px solid ${S.border}`, color: S.muted, borderRadius: 8, padding: '8px 12px', fontSize: 12 }} />
+          style={{ background: S.panel, border: `1px solid ${S.border}`, color: S.muted, borderRadius: 8, padding: '8px 12px', fontSize: 12, colorScheme: 'dark' }} />
         <input type='date' value={filter.to_date} onChange={e => setFilter({ ...filter, to_date: e.target.value })}
-          style={{ background: S.panel, border: `1px solid ${S.border}`, color: S.muted, borderRadius: 8, padding: '8px 12px', fontSize: 12 }} />
+          style={{ background: S.panel, border: `1px solid ${S.border}`, color: S.muted, borderRadius: 8, padding: '8px 12px', fontSize: 12, colorScheme: 'dark' }} />
         {(filter.user_name || filter.from_date || filter.to_date) &&
           <button onClick={() => setFilter({ user_name: '', from_date: '', to_date: '' })} style={{ ...btnStyle(S.faint), fontSize: 12, padding: '6px 10px' }}>✕ Сброс</button>}
       </div>
