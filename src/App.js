@@ -1591,22 +1591,6 @@ function InvoiceForm({ data, setData, onSave, onCancel, uploading, setUploading,
       <Field label="Сумма (₽)">
         <input type="number" value={data.amount} onChange={e => setData({ ...data, amount: e.target.value })} placeholder='0' style={inp} />
       </Field>
-      <Field label="Раздел работ">
-        <select value={data.section || ''} onChange={e => setData({ ...data, section: e.target.value })} style={sel}>
-          <option value=''>Не указан</option>
-          <option value='Общестроительные работы'>Общестроительные работы</option>
-          <option value='Электромонтажные работы'>Электромонтажные работы</option>
-          <option value='Сантехнические работы (ВиК)'>Сантехнические работы (ВиК)</option>
-          <option value='Отопление и вентиляция'>Отопление и вентиляция</option>
-          <option value='Кондиционирование'>Кондиционирование</option>
-          <option value='Слаботочные системы (СКС)'>Слаботочные системы (СКС)</option>
-          <option value='Пожарная и охранная сигнализация'>Пожарная и охранная сигнализация</option>
-          <option value='Архитектура и фасад'>Архитектура и фасад</option>
-          <option value='Благоустройство'>Благоустройство</option>
-          <option value='Материалы'>Материалы</option>
-          <option value='Прочее'>Прочее</option>
-        </select>
-      </Field>
       <Field label="Примечание">
         <input value={data.note} onChange={e => setData({ ...data, note: e.target.value })} placeholder='Цемент, арматура...' style={inp} />
       </Field>
@@ -1635,8 +1619,8 @@ function InvoicesTab({ objects }) {
   const [uploading, setUploading] = useState(false);
   const [editId, setEditId] = useState(null);
   const [editForm, setEditForm] = useState({});
-  const [filter, setFilter] = useState({ object_id: '', supplier: '', section: '', from_date: '', to_date: '' });
-  const emptyForm = { object_id: '', date: new Date().toISOString().slice(0, 10), amount: '', note: '', supplier: '', section: '', section_id: '', status: 'pending', file_url: '' };
+  const [filter, setFilter] = useState({ object_id: '', supplier: '', from_date: '', to_date: '' });
+  const emptyForm = { object_id: '', date: new Date().toISOString().slice(0, 10), amount: '', note: '', supplier: '', section_id: '', status: 'pending', file_url: '' };
   const [form, setForm] = useState(emptyForm);
 
   useEffect(() => { fetchInvoices(); }, []);
@@ -1669,7 +1653,6 @@ function InvoicesTab({ objects }) {
   const filtered = invoices.filter(inv => {
     if (filter.object_id && inv.object_id !== filter.object_id) return false;
     if (filter.supplier && !(inv.supplier || '').toLowerCase().includes(filter.supplier.toLowerCase())) return false;
-    if (filter.section && inv.section !== filter.section) return false;
     if (filter.from_date && inv.date < filter.from_date) return false;
     if (filter.to_date && inv.date > filter.to_date) return false;
     return true;
@@ -1691,27 +1674,13 @@ function InvoicesTab({ objects }) {
         </select>
         <input value={filter.supplier} onChange={e => setFilter({ ...filter, supplier: e.target.value })} placeholder='Поставщик...'
           style={{ background: S.panel, border: `1px solid ${S.border}`, color: S.text, borderRadius: 8, padding: '8px 12px', fontSize: 12 }} />
-        <select value={filter.section || ''} onChange={e => setFilter({ ...filter, section: e.target.value })}
-          style={{ background: S.panel, border: `1px solid ${S.border}`, color: S.muted, borderRadius: 8, padding: '8px 12px', fontSize: 12 }}>
-          <option value=''>Все разделы</option>
-          <option value='Общестроительные работы'>Общестроительные работы</option>
-          <option value='Электромонтажные работы'>Электромонтажные работы</option>
-          <option value='Сантехнические работы (ВиК)'>Сантехнические (ВиК)</option>
-          <option value='Отопление и вентиляция'>Отопление и вентиляция</option>
-          <option value='Кондиционирование'>Кондиционирование</option>
-          <option value='Слаботочные системы (СКС)'>СКС</option>
-          <option value='Пожарная и охранная сигнализация'>ПОС</option>
-          <option value='Архитектура и фасад'>Архитектура</option>
-          <option value='Благоустройство'>Благоустройство</option>
-          <option value='Материалы'>Материалы</option>
-          <option value='Прочее'>Прочее</option>
-        </select>
+
         <input type='date' value={filter.from_date} onChange={e => setFilter({ ...filter, from_date: e.target.value })}
           style={{ background: S.panel, border: `1px solid ${S.border}`, color: S.muted, borderRadius: 8, padding: '8px 12px', fontSize: 12, colorScheme: 'dark' }} />
         <input type='date' value={filter.to_date} onChange={e => setFilter({ ...filter, to_date: e.target.value })}
           style={{ background: S.panel, border: `1px solid ${S.border}`, color: S.muted, borderRadius: 8, padding: '8px 12px', fontSize: 12, colorScheme: 'dark' }} />
-        {(filter.object_id || filter.supplier || filter.section || filter.from_date || filter.to_date) &&
-          <button onClick={() => setFilter({ object_id: '', supplier: '', section: '', from_date: '', to_date: '' })} style={{ ...btnStyle(S.faint), fontSize: 12, padding: '6px 10px' }}>✕ Сброс</button>}
+        {(filter.object_id || filter.supplier || filter.from_date || filter.to_date) &&
+          <button onClick={() => setFilter({ object_id: '', supplier: '', from_date: '', to_date: '' })} style={{ ...btnStyle(S.faint), fontSize: 12, padding: '6px 10px' }}>✕ Сброс</button>}
       </div>
 
       {showForm && <InvoiceForm data={form} setData={setForm} onSave={addInvoice} onCancel={() => setShowForm(false)} uploading={uploading} setUploading={setUploading} objects={objects} />}
@@ -1731,7 +1700,6 @@ function InvoicesTab({ objects }) {
                   </div>
                   <div style={{ fontSize: 12, color: S.muted, marginBottom: 4, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                     {inv.supplier && <span>🏭 {inv.supplier}</span>}
-                    {inv.section && <span>📂 {inv.section}</span>}
                     {inv.section_id && <span style={{ color: S.yellow }}>📋 раздел</span>}
                     <span>{inv.note || '—'}</span>
                     <span>📅 {inv.date}</span>
