@@ -1436,6 +1436,46 @@ function MovementsTab({ objects, linkedUsers, userProfile }) {
 }
 
 // ─── СЧЕТА ─────────────────────────────────────────────────────────────────────
+function InvoiceForm({ data, setData, onSave, onCancel, uploading, setUploading, objects }) {
+  return (
+    <div style={{ background: S.panel, borderRadius: 12, border: `1px solid ${S.border}`, padding: 20, marginBottom: 16 }}>
+      <Field label="Объект">
+        <select value={data.object_id} onChange={e => setData({ ...data, object_id: e.target.value })} style={sel}>
+          <option value=''>Выберите объект</option>
+          {objects.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+        </select>
+      </Field>
+      <Field label="Поставщик">
+        <input value={data.supplier || ''} onChange={e => setData({ ...data, supplier: e.target.value })} placeholder='ООО Стройматериалы' style={inp} />
+      </Field>
+      <Field label="Дата">
+        <input type="date" value={data.date} onChange={e => setData({ ...data, date: e.target.value })} style={inp} />
+      </Field>
+      <Field label="Сумма (₽)">
+        <input type="number" value={data.amount} onChange={e => setData({ ...data, amount: e.target.value })} placeholder='0' style={inp} />
+      </Field>
+      <Field label="Примечание">
+        <input value={data.note} onChange={e => setData({ ...data, note: e.target.value })} placeholder='Цемент, арматура...' style={inp} />
+      </Field>
+      <Field label="Статус">
+        <select value={data.status} onChange={e => setData({ ...data, status: e.target.value })} style={sel}>
+          <option value='pending'>Ожидает оплаты</option>
+          <option value='paid'>Оплачен</option>
+          <option value='overdue'>Просрочен</option>
+        </select>
+      </Field>
+      <Field label="Фото или скан счёта">
+        <FileUpload onUpload={url => setData({ ...data, file_url: url })} uploading={uploading} setUploading={setUploading} />
+        <FilePreview url={data.file_url} onRemove={() => setData({ ...data, file_url: '' })} />
+      </Field>
+      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+        <button onClick={onSave} disabled={uploading} style={btnStyle(S.green)}>Сохранить</button>
+        <button onClick={onCancel} style={btnStyle(S.faint)}>Отмена</button>
+      </div>
+    </div>
+  );
+}
+
 function InvoicesTab({ objects }) {
   const [invoices, setInvoices] = useState([]);
   const [showForm, setShowForm] = useState(false);
@@ -1481,36 +1521,6 @@ function InvoicesTab({ objects }) {
     return true;
   });
 
-  const InvoiceForm = ({ data, setData, onSave, onCancel, uploading, setUploading }) => (
-    <div style={{ background: S.panel, borderRadius: 12, border: `1px solid ${S.border}`, padding: 20, marginBottom: 16 }}>
-      <Field label="Объект">
-        <select value={data.object_id} onChange={e => setData({ ...data, object_id: e.target.value })} style={sel}>
-          <option value=''>Выберите объект</option>
-          {objects.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-        </select>
-      </Field>
-      <Field label="Поставщик"><input value={data.supplier || ''} onChange={e => setData({ ...data, supplier: e.target.value })} placeholder='ООО Стройматериалы' style={inp} /></Field>
-      <Field label="Дата"><input type="date" value={data.date} onChange={e => setData({ ...data, date: e.target.value })} style={inp} /></Field>
-      <Field label="Сумма (₽)"><input type="number" value={data.amount} onChange={e => setData({ ...data, amount: e.target.value })} placeholder='0' style={inp} /></Field>
-      <Field label="Примечание"><input value={data.note} onChange={e => setData({ ...data, note: e.target.value })} placeholder='Цемент, арматура...' style={inp} /></Field>
-      <Field label="Статус">
-        <select value={data.status} onChange={e => setData({ ...data, status: e.target.value })} style={sel}>
-          <option value='pending'>Ожидает оплаты</option>
-          <option value='paid'>Оплачен</option>
-          <option value='overdue'>Просрочен</option>
-        </select>
-      </Field>
-      <Field label="Фото или скан счёта">
-        <FileUpload onUpload={url => setData({ ...data, file_url: url })} uploading={uploading} setUploading={setUploading} />
-        <FilePreview url={data.file_url} onRemove={() => setData({ ...data, file_url: '' })} />
-      </Field>
-      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-        <button onClick={onSave} disabled={uploading} style={btnStyle(S.green)}>Сохранить</button>
-        <button onClick={onCancel} style={btnStyle(S.faint)}>Отмена</button>
-      </div>
-    </div>
-  );
-
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -1535,14 +1545,14 @@ function InvoicesTab({ objects }) {
           <button onClick={() => setFilter({ object_id: '', supplier: '', from_date: '', to_date: '' })} style={{ ...btnStyle(S.faint), fontSize: 12, padding: '6px 10px' }}>✕ Сброс</button>}
       </div>
 
-      {showForm && <InvoiceForm data={form} setData={setForm} onSave={addInvoice} onCancel={() => setShowForm(false)} uploading={uploading} setUploading={setUploading} />}
+      {showForm && <InvoiceForm data={form} setData={setForm} onSave={addInvoice} onCancel={() => setShowForm(false)} uploading={uploading} setUploading={setUploading} objects={objects} />}
 
       {filtered.map(inv => {
         const st = statusColors[inv.status];
         return (
           <div key={inv.id} style={{ background: S.panel, borderRadius: 12, border: `1px solid ${S.border}`, padding: '14px 16px', marginBottom: 10 }}>
             {editId === inv.id ? (
-              <InvoiceForm data={editForm} setData={setEditForm} onSave={() => saveEdit(inv.id)} onCancel={() => setEditId(null)} uploading={uploading} setUploading={setUploading} />
+              <InvoiceForm data={editForm} setData={setEditForm} onSave={() => saveEdit(inv.id)} onCancel={() => setEditId(null)} uploading={uploading} setUploading={setUploading} objects={objects} />
             ) : (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div style={{ flex: 1 }}>
