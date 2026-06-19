@@ -820,6 +820,7 @@ function ObjectTimesheet({ object, employees }) {
       end_time: e.end_time,
       rate: e.rate,
       status: e.status,
+      section_id: e.section_id || null,
     }));
 
     await supabase.from('object_timesheet').insert(toInsert);
@@ -862,6 +863,7 @@ function ObjectTimesheet({ object, employees }) {
       end_time: editEntryForm.end_time,
       rate: +editEntryForm.rate || 0,
       status: editEntryForm.status,
+      section_id: editEntryForm.section_id || null,
     }).eq('id', id);
     setEditEntryId(null);
     fetchEntries();
@@ -992,6 +994,14 @@ function ObjectTimesheet({ object, employees }) {
                   <option value='absent'>Прогул</option>
                 </select>
               </Field>
+              {sections.length > 0 && (
+                <Field label="Раздел сметы">
+                  <select value={editEntryForm.section_id || ''} onChange={ev => setEditEntryForm({ ...editEntryForm, section_id: ev.target.value })} style={sel}>
+                    <option value=''>Не указан</option>
+                    {sections.map(s => <option key={s.id} value={s.id}>{s.code} — {s.name}</option>)}
+                  </select>
+                </Field>
+              )}
               <div style={{ display: 'flex', gap: 8 }}>
                 <button onClick={() => saveEntryEdit(e.id)} style={{ ...btnStyle(S.green), fontSize: 12, padding: '6px 12px' }}>Сохранить</button>
                 <button onClick={() => setEditEntryId(null)} style={{ ...btnStyle(S.faint), fontSize: 12, padding: '6px 12px' }}>Отмена</button>
@@ -1016,7 +1026,7 @@ function ObjectTimesheet({ object, employees }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: 11, color: statusColors[e.status], fontWeight: 600 }}>{statusLabels[e.status]}</span>
                 {e.rate > 0 && <span style={{ fontSize: 13, color: S.yellow, fontWeight: 700 }}>{new Intl.NumberFormat('ru-RU').format(e.rate)} ₽</span>}
-                <button onClick={() => { setEditEntryId(e.id); setEditEntryForm({ start_time: e.start_time?.slice(0,5), end_time: e.end_time?.slice(0,5), rate: e.rate || '', status: e.status }); }}
+                <button onClick={() => { setEditEntryId(e.id); setEditEntryForm({ start_time: e.start_time?.slice(0,5), end_time: e.end_time?.slice(0,5), rate: e.rate || '', status: e.status, section_id: e.section_id || '' }); }}
                   style={{ background: 'none', border: `1px solid ${S.faint}`, color: S.muted, borderRadius: 6, padding: '3px 8px', fontSize: 11, cursor: 'pointer' }}>
                   ✏️
                 </button>
@@ -2241,18 +2251,25 @@ function FinanceReport({ objects }) {
                             </span>
                             {sec.budget > 0 && <span style={{ fontSize: 11, color: S.muted }}>Смета: {fmt(sec.budget)} ₽</span>}
                           </div>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4, marginBottom: 4 }}>
                             {[
-                              { label: 'Материалы', value: secInvoices, color: S.yellow },
-                              { label: 'ФОТ', value: secFOT, color: S.accent },
-                              { label: 'Итого', value: secTotal, color: S.text },
-                              { label: 'Остаток', value: secLeft, color: secLeft >= 0 ? S.green : S.accent },
-                            ].map((k,i) => (
-                              <div key={i} style={{ background: S.bg, borderRadius: 4, padding: '4px 6px' }}>
-                                <div style={{ fontSize: 8, color: S.muted, textTransform: 'uppercase' }}>{k.label}</div>
-                                <div style={{ fontSize: 11, fontWeight: 700, color: k.color }}>{fmt(k.value)} ₽</div>
-                              </div>
-                            ))}
+                              { label: 'Мат. факт', value: secInvoices, budget: sec.budget_mat, color: S.yellow },
+                              { label: 'ФОТ факт', value: secFOT, budget: sec.budget_fot, color: S.accent },
+                              { label: 'Итого', value: secTotal, budget: sec.budget, color: S.text },
+                            ].map((k,i) => {
+                              const left = (k.budget||0) - k.value;
+                              return (
+                                <div key={i} style={{ background: S.bg, borderRadius: 4, padding: '4px 6px' }}>
+                                  <div style={{ fontSize: 8, color: S.muted, textTransform: 'uppercase' }}>{k.label}</div>
+                                  <div style={{ fontSize: 11, fontWeight: 700, color: k.color }}>{fmt(k.value)} ₽</div>
+                                  {k.budget > 0 && (
+                                    <div style={{ fontSize: 9, color: left >= 0 ? S.green : S.accent }}>
+                                      {left >= 0 ? `↓ ${fmt(left)}` : `↑ ${fmt(Math.abs(left))}`} ₽
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       );
@@ -2947,7 +2964,7 @@ function AuditLog() {
 function ObjectSections({ object }) {
   const [sections, setSections] = useState([]);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ code: '', name: '', budget: '' });
+  const [form, setForm] = useState({ code: '', name: '', budget_fot: '', budget_mat: '' });
 
   useEffect(() => { fetchSections(); }, []);
 
@@ -2963,9 +2980,11 @@ function ObjectSections({ object }) {
       object_id: object.id,
       code: form.code.trim().toUpperCase(),
       name: form.name.trim(),
-      budget: +form.budget || 0,
+      budget: (+form.budget_fot || 0) + (+form.budget_mat || 0),
+      budget_fot: +form.budget_fot || 0,
+      budget_mat: +form.budget_mat || 0,
     }]);
-    setForm({ code: '', name: '', budget: '' });
+    setForm({ code: '', name: '', budget_fot: '', budget_mat: '' });
     setShowForm(false);
     fetchSections();
   }
@@ -2998,8 +3017,8 @@ function ObjectSections({ object }) {
 
       {showForm && (
         <div style={{ background: S.panel, borderRadius: 10, border: `1px solid ${S.border}`, padding: 16, marginBottom: 14 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1fr', gap: 8 }}>
-            <Field label="Код (аббр.)">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 8 }}>
+            <Field label="Код (аббр.) *">
               <input value={form.code} onChange={e => setForm({ ...form, code: e.target.value })}
                 placeholder='ОВ' style={inp} maxLength={6} />
             </Field>
@@ -3007,10 +3026,19 @@ function ObjectSections({ object }) {
               <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
                 placeholder='Отопление и вентиляция' style={inp} />
             </Field>
-            <Field label="Сумма по смете (₽)">
-              <input type="number" value={form.budget} onChange={e => setForm({ ...form, budget: e.target.value })}
-                placeholder='500000' style={inp} />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <Field label="Смета ФОТ (₽)">
+              <input type="number" value={form.budget_fot} onChange={e => setForm({ ...form, budget_fot: e.target.value })}
+                placeholder='150000' style={inp} />
             </Field>
+            <Field label="Смета Материалы (₽)">
+              <input type="number" value={form.budget_mat} onChange={e => setForm({ ...form, budget_mat: e.target.value })}
+                placeholder='350000' style={inp} />
+            </Field>
+          </div>
+          <div style={{ fontSize: 11, color: S.muted, marginBottom: 8 }}>
+            Итого по смете: <span style={{ color: S.yellow, fontWeight: 700 }}>{new Intl.NumberFormat('ru-RU').format((+form.budget_fot||0) + (+form.budget_mat||0))} ₽</span>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={addSection} style={btnStyle(S.green)}>Сохранить</button>
@@ -3033,7 +3061,14 @@ function ObjectSections({ object }) {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             {sec.budget > 0 && (
-              <span style={{ fontSize: 13, color: S.yellow, fontWeight: 700 }}>{fmt(sec.budget)} ₽</span>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 13, color: S.yellow, fontWeight: 700 }}>{fmt(sec.budget)} ₽</div>
+                {(sec.budget_fot > 0 || sec.budget_mat > 0) && (
+                  <div style={{ fontSize: 10, color: S.muted }}>
+                    ФОТ: {fmt(sec.budget_fot||0)} · Мат: {fmt(sec.budget_mat||0)}
+                  </div>
+                )}
+              </div>
             )}
             <DelBtn onClick={() => deleteSection(sec.id)} />
           </div>
