@@ -1321,9 +1321,16 @@ function MovementsTab({ objects, linkedUsers, userProfile }) {
   const [showForm, setShowForm] = useState(false);
   const [filter, setFilter] = useState({ from: '', to: '', type: '', from_date: '', to_date: '' });
   const [uploading, setUploading] = useState(false);
-  const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 10), from_object_id: '', to_object_id: '', type: 'material', note: '', author: '', file_url: '' });
+  const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 10), from_object_id: '', to_object_id: '', type: 'material', note: '', author: userProfile?.name || '', receiver_id: '', file_url: '' });
 
   useEffect(() => { fetchMovements(); }, []);
+
+  // Set author when userProfile loads
+  useEffect(() => {
+    if (userProfile?.name) {
+      setForm(f => ({ ...f, author: userProfile.name }));
+    }
+  }, [userProfile]);
 
   async function fetchMovements() {
     const { data } = await supabase.from('movements').select('*').order('date', { ascending: false });
@@ -1332,7 +1339,7 @@ function MovementsTab({ objects, linkedUsers, userProfile }) {
 
   async function addMovement() {
     await supabase.from('movements').insert([{ ...form, from_object_id: form.from_object_id || null, to_object_id: form.to_object_id || null, receiver_id: form.receiver_id || null }]);
-    setForm({ date: new Date().toISOString().slice(0, 10), from_object_id: '', to_object_id: '', type: 'material', note: '', author: '', file_url: '' });
+    setForm({ date: new Date().toISOString().slice(0, 10), from_object_id: '', to_object_id: '', type: 'material', note: '', author: userProfile?.name || '', receiver_id: '', file_url: '' });
     setShowForm(false);
     fetchMovements();
   }
@@ -1408,7 +1415,7 @@ function MovementsTab({ objects, linkedUsers, userProfile }) {
           </Field>
           <Field label="Описание"><input value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} placeholder='Что везём...' style={inp} /></Field>
           <Field label="Отправитель">
-            <input value={form.author} readOnly style={{ ...inp, color: S.muted, cursor: 'default' }} />
+            <input value={form.author || userProfile?.name || ''} readOnly style={{ ...inp, color: S.muted, cursor: 'default', background: S.faint }} />
           </Field>
           <Field label="Получатель (из пользователей системы)">
             <select value={form.receiver_id} onChange={e => setForm({ ...form, receiver_id: e.target.value })} style={sel}>
