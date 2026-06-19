@@ -2137,8 +2137,8 @@ function FinanceReport({ objects }) {
         return (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12, marginBottom: 20 }}>
             {[
-              { label: '🧾 Расходы по счетам', value: totalMaterials, budget: totalBudgetMat, pct: pctMat, sub: `${invoices.length} счетов`, color: S.yellow },
-              { label: '👷 ФОТ', value: totalFOT, budget: totalBudgetFOT, pct: pctFOT, sub: `${timesheet.filter(t => t.status === 'worked').length} записей`, color: S.accent },
+              { label: '🧾 Расходы МАТ', value: totalMaterials, budget: totalBudgetMat, pct: pctMat, sub: `${invoices.length} счетов`, color: S.yellow },
+              { label: '👷 Расходы ФОТ', value: totalFOT, budget: totalBudgetFOT, pct: pctFOT, sub: `${timesheet.filter(t => t.status === 'worked').length} записей`, color: S.accent },
               { label: '📊 Итого расходов', value: totalAll, budget: totalBudget, pct: pctAll, sub: 'материалы + ФОТ', color: S.green },
             ].map((k, i) => (
               <div key={i} style={{ background: S.panel, borderRadius: 12, border: `1px solid ${S.border}`, padding: '16px 20px' }}>
@@ -2167,18 +2167,7 @@ function FinanceReport({ objects }) {
         );
       })()}
 
-      {/* По разделам счетов */}
-      {Object.keys(bySection).length > 0 && (
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: S.text, marginBottom: 10 }}>🧾 Счета по разделам</div>
-          {Object.entries(bySection).sort((a,b) => b[1]-a[1]).map(([sec, amt]) => (
-            <div key={sec} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 14px', background: S.panel, borderRadius: 8, marginBottom: 4, border: `1px solid ${S.border}` }}>
-              <span style={{ fontSize: 13, color: S.text }}>📂 {sec}</span>
-              <span style={{ fontSize: 13, fontWeight: 700, color: S.yellow }}>{fmt(amt)} ₽</span>
-            </div>
-          ))}
-        </div>
-      )}
+
 
 
 
@@ -2258,28 +2247,8 @@ function FinanceReport({ objects }) {
                     })}
                   </div>
                 )}
-                {Object.keys(objSections).length > 0 && (
-                  <div style={{ marginBottom: 12 }}>
-                    <div style={{ fontSize: 11, color: S.muted, textTransform: 'uppercase', marginBottom: 6 }}>Счета без привязки к разделу</div>
-                    {Object.entries(objSections).filter(([sec]) => sec === 'Без раздела' || !o.sections.find(s => `${s.code} — ${s.name}` === sec)).sort((a,b) => b[1]-a[1]).map(([sec, amt]) => (
-                      <div key={sec} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: `1px solid ${S.faint}` }}>
-                        <span style={{ fontSize: 12, color: S.muted }}>📂 {sec}</span>
-                        <span style={{ fontSize: 12, color: S.yellow }}>{fmt(amt)} ₽</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {Object.keys(objDepts).length > 0 && (
-                  <div>
-                    <div style={{ fontSize: 11, color: S.muted, textTransform: 'uppercase', marginBottom: 6 }}>ФОТ по подразделениям</div>
-                    {Object.entries(objDepts).sort((a,b) => b[1]-a[1]).map(([dept, amt]) => (
-                      <div key={dept} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: `1px solid ${S.faint}` }}>
-                        <span style={{ fontSize: 12, color: S.text }}>🏢 {dept}</span>
-                        <span style={{ fontSize: 12, color: S.accent, fontWeight: 700 }}>{fmt(amt)} ₽</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+
+
               </div>
             )}
           </div>
