@@ -604,7 +604,7 @@ function ObjectsTab({ objects, employees, onRefresh }) {
   const [openSectionsId, setOpenSectionsId] = useState(null);
   const [editId, setEditId] = useState(null);
   const [editForm, setEditForm] = useState({});
-  const emptyForm = { name: '', address: '', foreman: '', start_date: '', end_date: '', budget: '', contract_sum: '' };
+  const emptyForm = { name: '', address: '', foreman: '', start_date: '', end_date: '', budget: '', contract_sum: '', object_type: 'project' };
   const [form, setForm] = useState(emptyForm);
 
   async function addObject() {
@@ -650,6 +650,10 @@ function ObjectsTab({ objects, employees, onRefresh }) {
     { label: 'Сумма контракта (₽)', key: 'contract_sum', type: 'number', placeholder: '0' },
     { label: 'Бюджет (₽)', key: 'budget', type: 'number', placeholder: '0' },
   ];
+  const objectTypes = [
+    { value: 'project', label: '🏗 Проект' },
+    { value: 'base', label: '🏠 База / Склад' },
+  ];
 
   const activeObjs = objects.filter(o => o.status !== 'completed');
   const completedObjs = objects.filter(o => o.status === 'completed');
@@ -669,6 +673,11 @@ function ObjectsTab({ objects, employees, onRefresh }) {
               <input type={f.type || 'text'} value={form[f.key]} onChange={e => setForm({ ...form, [f.key]: e.target.value })} placeholder={f.placeholder} style={inp} />
             </Field>
           ))}
+          <Field label="Тип объекта">
+            <select value={form.object_type || 'project'} onChange={e => setForm({ ...form, object_type: e.target.value })} style={sel}>
+              {objectTypes.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+          </Field>
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={addObject} style={btnStyle(S.green)}>Сохранить</button>
             <button onClick={() => setShowForm(false)} style={btnStyle(S.faint)}>Отмена</button>
@@ -694,7 +703,10 @@ function ObjectsTab({ objects, employees, onRefresh }) {
             ) : (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: S.text, marginBottom: 6 }}>{o.name}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: S.text }}>{o.name}</div>
+                    {o.object_type === 'base' && <span style={{ background: '#8b949e22', color: S.muted, borderRadius: 5, padding: '1px 7px', fontSize: 10 }}>🏠 База</span>}
+                  </div>
                   <div style={{ fontSize: 12, color: S.muted, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
                     {o.address && <span>📍 {o.address}</span>}
                     {o.foreman && <span>👷 {o.foreman}</span>}
@@ -703,7 +715,7 @@ function ObjectsTab({ objects, employees, onRefresh }) {
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
-                  <button onClick={() => { setEditId(o.id); setEditForm({ name: o.name, address: o.address || '', foreman: o.foreman || '', start_date: o.start_date || '', end_date: o.end_date || '', budget: o.budget || '', contract_sum: o.contract_sum || '' }); }}
+                  <button onClick={() => { setEditId(o.id); setEditForm({ name: o.name, address: o.address || '', foreman: o.foreman || '', start_date: o.start_date || '', end_date: o.end_date || '', budget: o.budget || '', contract_sum: o.contract_sum || '', object_type: o.object_type || 'project' }); }}
                     style={{ background: 'none', border: `1px solid ${S.faint}`, color: S.muted, borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}>
                     ✏️
                   </button>
@@ -2082,14 +2094,23 @@ function FinanceReport({ objects }) {
   const sectionName = id => { const s = allSections.find(s => s.id === id); return s ? `${s.code} — ${s.name}` : '—'; };
   const sectionCode = id => allSections.find(s => s.id === id)?.code || '?';
 
-  // By object
+  // By object — separate projects from base
   const byObject = {};
   objects.forEach(o => {
     const objSecs = allSections.filter(s => s.object_id === o.id);
-    byObject[o.id] = { name: o.name, materials: 0, fot: 0, invoices: [], timesheet: [], sections: objSecs };
+    byObject[o.id] = { name: o.name, object_type: o.object_type || 'project', materials: 0, fot: 0, invoices: [], timesheet: [], sections: objSecs };
   });
   invoices.forEach(i => { if (byObject[i.object_id]) { byObject[i.object_id].materials += (i.amount || 0); byObject[i.object_id].invoices.push(i); } });
   timesheet.filter(t => t.status === 'worked').forEach(t => { if (byObject[t.object_id]) { byObject[t.object_id].fot += (t.rate || 0); byObject[t.object_id].timesheet.push(t); } });
+
+  const projectObjects = Object.entries(byObject).filter(([,o]) => o.object_type !== 'base' && (o.materials > 0 || o.fot > 0));
+  const baseObjects = Object.entries(byObject).filter(([,o]) => o.object_type === 'base' && (o.materials > 0 || o.fot > 0));
+
+  // Summary only for projects
+  const projectMaterials = invoices.filter(i => byObject[i.object_id]?.object_type !== 'base').reduce((s,i) => s+(i.amount||0), 0);
+  const projectFOT = timesheet.filter(t => t.status === 'worked' && byObject[t.object_id]?.object_type !== 'base').reduce((s,t) => s+(t.rate||0), 0);
+  const baseMaterials = invoices.filter(i => byObject[i.object_id]?.object_type === 'base').reduce((s,i) => s+(i.amount||0), 0);
+  const baseFOT = timesheet.filter(t => t.status === 'worked' && byObject[t.object_id]?.object_type === 'base').reduce((s,t) => s+(t.rate||0), 0);
 
   // By section (invoices)
   const bySection = {};
@@ -2137,9 +2158,9 @@ function FinanceReport({ objects }) {
         return (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12, marginBottom: 20 }}>
             {[
-              { label: '🧾 Расходы МАТ', value: totalMaterials, budget: totalBudgetMat, pct: pctMat, sub: `${invoices.length} счетов`, color: S.yellow },
-              { label: '👷 Расходы ФОТ', value: totalFOT, budget: totalBudgetFOT, pct: pctFOT, sub: `${timesheet.filter(t => t.status === 'worked').length} записей`, color: S.accent },
-              { label: '📊 Итого расходов', value: totalAll, budget: totalBudget, pct: pctAll, sub: 'материалы + ФОТ', color: S.green },
+              { label: '🧾 Расходы МАТ (проекты)', value: projectMaterials, budget: totalBudgetMat, pct: pctMat, sub: `${invoices.filter(i => byObject[i.object_id]?.object_type !== 'base').length} счетов`, color: S.yellow },
+              { label: '👷 Расходы ФОТ (проекты)', value: projectFOT, budget: totalBudgetFOT, pct: pctFOT, sub: `${timesheet.filter(t => t.status === 'worked' && byObject[t.object_id]?.object_type !== 'base').length} записей`, color: S.accent },
+              { label: '📊 Итого по проектам', value: projectMaterials + projectFOT, budget: totalBudget, pct: pctAll, sub: 'без учёта базы', color: S.green },
             ].map((k, i) => (
               <div key={i} style={{ background: S.panel, borderRadius: 12, border: `1px solid ${S.border}`, padding: '16px 20px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -2172,8 +2193,8 @@ function FinanceReport({ objects }) {
 
 
       {/* По объектам с раскрытием */}
-      <div style={{ fontSize: 13, fontWeight: 700, color: S.text, marginBottom: 10 }}>🏗 По объектам</div>
-      {Object.entries(byObject).filter(([,o]) => o.materials > 0 || o.fot > 0).map(([objId, o]) => {
+      <div style={{ fontSize: 13, fontWeight: 700, color: S.text, marginBottom: 10 }}>🏗 По проектам</div>
+      {projectObjects.map(([objId, o]) => {
         const isExpanded = expandedObj === objId;
         // Sections within this object
         const objSections = {};
@@ -2254,7 +2275,30 @@ function FinanceReport({ objects }) {
           </div>
         );
       })}
-      {Object.values(byObject).every(o => o.materials === 0 && o.fot === 0) && <div style={{ textAlign: 'center', padding: 30, color: S.muted }}>Нет данных за выбранный период</div>}
+      {projectObjects.length === 0 && <div style={{ textAlign: 'center', padding: 20, color: S.muted }}>Нет данных по проектам</div>}
+
+      {/* База / Склад */}
+      {baseObjects.length > 0 && (
+        <div style={{ marginTop: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: S.muted, marginBottom: 10 }}>🏠 Содержание базы / склада</div>
+          {baseObjects.map(([objId, o]) => (
+            <div key={objId} style={{ background: S.panel, borderRadius: 10, border: `1px solid ${S.faint}`, padding: '12px 16px', marginBottom: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: S.muted }}>🏠 {o.name}</span>
+                <div style={{ display: 'flex', gap: 16 }}>
+                  <span style={{ fontSize: 12, color: S.yellow }}>{fmt(o.materials)} ₽ мат.</span>
+                  <span style={{ fontSize: 12, color: S.accent }}>{fmt(o.fot)} ₽ ФОТ</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: S.muted }}>{fmt(o.materials + o.fot)} ₽</span>
+                </div>
+              </div>
+            </div>
+          ))}
+          <div style={{ background: S.faint, borderRadius: 8, padding: '10px 16px', display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 12, color: S.muted }}>Итого на содержание базы</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: S.muted }}>{fmt(baseMaterials + baseFOT)} ₽</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
