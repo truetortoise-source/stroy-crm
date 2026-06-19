@@ -601,6 +601,7 @@ function EmployeesTab({ employees: initialEmployees, onRefresh }) {
 function ObjectsTab({ objects, employees, onRefresh }) {
   const [showForm, setShowForm] = useState(false);
   const [openTimesheetId, setOpenTimesheetId] = useState(null);
+  const [openSectionsId, setOpenSectionsId] = useState(null);
   const [editId, setEditId] = useState(null);
   const [editForm, setEditForm] = useState({});
   const emptyForm = { name: '', address: '', foreman: '', start_date: '', end_date: '', budget: '', contract_sum: '' };
@@ -710,6 +711,10 @@ function ObjectsTab({ objects, employees, onRefresh }) {
                     style={{ ...btnStyle(openTimesheetId === o.id ? S.blue : S.faint), fontSize: 12, padding: '6px 12px' }}>
                     🗓 Табель
                   </button>
+                  <button onClick={() => setOpenSectionsId(openSectionsId === o.id ? null : o.id)}
+                    style={{ ...btnStyle(openSectionsId === o.id ? S.yellow : S.faint), fontSize: 12, padding: '6px 12px' }}>
+                    📋 Разделы
+                  </button>
                   <button onClick={() => { if(window.confirm('Завершить объект? Он перейдёт в архив.')) completeObject(o.id); }}
                     style={{ background: 'none', border: `1px solid ${S.faint}`, color: S.green, borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}>
                     ✓ Завершить
@@ -721,6 +726,9 @@ function ObjectsTab({ objects, employees, onRefresh }) {
           </div>
           {openTimesheetId === o.id && (
             <ObjectTimesheet object={o} employees={employees} />
+          )}
+          {openSectionsId === o.id && (
+            <ObjectSections object={o} />
           )}
         </div>
       ))}
@@ -764,11 +772,18 @@ function ObjectsTab({ objects, employees, onRefresh }) {
 // ─── ТАБЕЛЬ ОБЪЕКТА ────────────────────────────────────────────────────────────
 function ObjectTimesheet({ object, employees }) {
   const [entries, setEntries] = useState([]);
+  const [sections, setSections] = useState([]);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10));
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ employee_id: '', manual_name: '', is_manual: false, start_time: '08:00', end_time: '17:00', rate: '', status: 'worked' });
+  const [form, setForm] = useState({ employee_id: '', manual_name: '', is_manual: false, start_time: '08:00', end_time: '17:00', rate: '', status: 'worked', section_id: '' });
 
   useEffect(() => { fetchEntries(); }, [selectedDate]);
+  useEffect(() => { fetchSections(); }, []);
+
+  async function fetchSections() {
+    const { data } = await supabase.from('object_sections').select('*').eq('object_id', object.id).order('code');
+    setSections(data || []);
+  }
 
   async function fetchEntries() {
     const { data } = await supabase.from('object_timesheet')
@@ -826,8 +841,9 @@ function ObjectTimesheet({ object, employees }) {
       end_time: form.end_time,
       rate: +form.rate || (emp?.rate || 0),
       status: form.status,
+      section_id: form.section_id || null,
     }]);
-    setForm({ employee_id: '', manual_name: '', is_manual: false, start_time: '08:00', end_time: '17:00', rate: '', status: 'worked' });
+    setForm({ employee_id: '', manual_name: '', is_manual: false, start_time: '08:00', end_time: '17:00', rate: '', status: 'worked', section_id: '' });
     setShowForm(false);
     fetchEntries();
   }
@@ -929,6 +945,15 @@ function ObjectTimesheet({ object, employees }) {
             </select>
           </Field>
 
+          {sections.length > 0 && (
+            <Field label="Раздел сметы">
+              <select value={form.section_id} onChange={e => setForm({ ...form, section_id: e.target.value })} style={sel}>
+                <option value=''>Не указан</option>
+                {sections.map(s => <option key={s.id} value={s.id}>{s.code} — {s.name}</option>)}
+              </select>
+            </Field>
+          )}
+
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={addEntry} style={btnStyle(S.green)}>Сохранить</button>
             <button onClick={() => setShowForm(false)} style={btnStyle(S.faint)}>Отмена</button>
@@ -981,6 +1006,11 @@ function ObjectTimesheet({ object, employees }) {
                 </div>
                 <div style={{ fontSize: 11, color: S.muted, marginTop: 2 }}>
                   {e.start_time?.slice(0, 5)} – {e.end_time?.slice(0, 5)}
+                  {e.section_id && sections.find(s => s.id === e.section_id) && (
+                    <span style={{ marginLeft: 8, color: S.yellow }}>
+                      [{sections.find(s => s.id === e.section_id)?.code}]
+                    </span>
+                  )}
                 </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1515,6 +1545,17 @@ function MovementsTab({ objects, linkedUsers, userProfile }) {
 
 // ─── СЧЕТА ─────────────────────────────────────────────────────────────────────
 function InvoiceForm({ data, setData, onSave, onCancel, uploading, setUploading, objects }) {
+  const [sections, setSections] = useState([]);
+
+  useEffect(() => {
+    if (data.object_id) {
+      supabase.from('object_sections').select('*').eq('object_id', data.object_id).order('code')
+        .then(({ data: secs }) => setSections(secs || []));
+    } else {
+      setSections([]);
+    }
+  }, [data.object_id]);
+
   return (
     <div style={{ background: S.panel, borderRadius: 12, border: `1px solid ${S.border}`, padding: 20, marginBottom: 16 }}>
       <Field label="Объект">
@@ -1523,6 +1564,14 @@ function InvoiceForm({ data, setData, onSave, onCancel, uploading, setUploading,
           {objects.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
         </select>
       </Field>
+      {sections.length > 0 && (
+        <Field label="Раздел сметы">
+          <select value={data.section_id || ''} onChange={e => setData({ ...data, section_id: e.target.value })} style={sel}>
+            <option value=''>Не указан</option>
+            {sections.map(s => <option key={s.id} value={s.id}>{s.code} — {s.name}</option>)}
+          </select>
+        </Field>
+      )}
       <Field label="Поставщик">
         <input value={data.supplier || ''} onChange={e => setData({ ...data, supplier: e.target.value })} placeholder='ООО Стройматериалы' style={inp} />
       </Field>
@@ -1577,7 +1626,7 @@ function InvoicesTab({ objects }) {
   const [editId, setEditId] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [filter, setFilter] = useState({ object_id: '', supplier: '', section: '', from_date: '', to_date: '' });
-  const emptyForm = { object_id: '', date: new Date().toISOString().slice(0, 10), amount: '', note: '', supplier: '', section: '', status: 'pending', file_url: '' };
+  const emptyForm = { object_id: '', date: new Date().toISOString().slice(0, 10), amount: '', note: '', supplier: '', section: '', section_id: '', status: 'pending', file_url: '' };
   const [form, setForm] = useState(emptyForm);
 
   useEffect(() => { fetchInvoices(); }, []);
@@ -1673,6 +1722,7 @@ function InvoicesTab({ objects }) {
                   <div style={{ fontSize: 12, color: S.muted, marginBottom: 4, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                     {inv.supplier && <span>🏭 {inv.supplier}</span>}
                     {inv.section && <span>📂 {inv.section}</span>}
+                    {inv.section_id && <span style={{ color: S.yellow }}>📋 раздел</span>}
                     <span>{inv.note || '—'}</span>
                     <span>📅 {inv.date}</span>
                     <span style={{ background: `${st}22`, color: st, borderRadius: 5, padding: '2px 7px', fontWeight: 700 }}>{statusLabels[inv.status]}</span>
@@ -2030,14 +2080,20 @@ function FinanceReport({ objects }) {
 
   useEffect(() => { fetchData(); }, [filter]);
 
+  const [allSections, setAllSections] = useState([]);
+
   async function fetchData() {
     let iq = supabase.from('invoices').select('*');
     let tq = supabase.from('object_timesheet').select('*');
     if (filter.object_id) { iq = iq.eq('object_id', filter.object_id); tq = tq.eq('object_id', filter.object_id); }
     if (filter.from_date) { iq = iq.gte('date', filter.from_date); tq = tq.gte('date', filter.from_date); }
     if (filter.to_date) { iq = iq.lte('date', filter.to_date); tq = tq.lte('date', filter.to_date); }
-    const [{ data: inv }, { data: ts }, { data: emps }] = await Promise.all([iq, tq, supabase.from('employees').select('id, name, department')]);
-    setInvoices(inv || []); setTimesheet(ts || []); setEmployees(emps || []);
+    const [{ data: inv }, { data: ts }, { data: emps }, { data: secs }] = await Promise.all([
+      iq, tq,
+      supabase.from('employees').select('id, name, department'),
+      supabase.from('object_sections').select('*'),
+    ]);
+    setInvoices(inv || []); setTimesheet(ts || []); setEmployees(emps || []); setAllSections(secs || []);
   }
 
   const fmt = v => new Intl.NumberFormat('ru-RU').format(v);
@@ -2045,9 +2101,15 @@ function FinanceReport({ objects }) {
   const totalFOT = timesheet.filter(t => t.status === 'worked').reduce((s, t) => s + (t.rate || 0), 0);
   const totalAll = totalMaterials + totalFOT;
 
+  const sectionName = id => { const s = allSections.find(s => s.id === id); return s ? `${s.code} — ${s.name}` : '—'; };
+  const sectionCode = id => allSections.find(s => s.id === id)?.code || '?';
+
   // By object
   const byObject = {};
-  objects.forEach(o => { byObject[o.id] = { name: o.name, materials: 0, fot: 0, invoices: [], timesheet: [] }; });
+  objects.forEach(o => {
+    const objSecs = allSections.filter(s => s.object_id === o.id);
+    byObject[o.id] = { name: o.name, materials: 0, fot: 0, invoices: [], timesheet: [], sections: objSecs };
+  });
   invoices.forEach(i => { if (byObject[i.object_id]) { byObject[i.object_id].materials += (i.amount || 0); byObject[i.object_id].invoices.push(i); } });
   timesheet.filter(t => t.status === 'worked').forEach(t => { if (byObject[t.object_id]) { byObject[t.object_id].fot += (t.rate || 0); byObject[t.object_id].timesheet.push(t); } });
 
@@ -2161,13 +2223,49 @@ function FinanceReport({ objects }) {
             </div>
             {isExpanded && (
               <div style={{ borderTop: `1px solid ${S.faint}`, padding: '12px 16px', background: '#0d111755' }}>
+                {/* Разделы сметы с бюджетом vs фактом */}
+                {o.sections.length > 0 && (
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 11, color: S.muted, textTransform: 'uppercase', marginBottom: 6 }}>По разделам сметы</div>
+                    {o.sections.map(sec => {
+                      const secInvoices = o.invoices.filter(i => i.section_id === sec.id).reduce((s,i) => s+(i.amount||0), 0);
+                      const secFOT = o.timesheet.filter(t => t.section_id === sec.id).reduce((s,t) => s+(t.rate||0), 0);
+                      const secTotal = secInvoices + secFOT;
+                      const secLeft = (sec.budget || 0) - secTotal;
+                      return (
+                        <div key={sec.id} style={{ padding: '8px 0', borderBottom: `1px solid ${S.faint}` }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                            <span style={{ fontSize: 12, color: S.text, fontWeight: 600 }}>
+                              <span style={{ background: S.faint, color: S.yellow, borderRadius: 4, padding: '1px 5px', fontSize: 10, fontFamily: 'monospace', marginRight: 6 }}>{sec.code}</span>
+                              {sec.name}
+                            </span>
+                            {sec.budget > 0 && <span style={{ fontSize: 11, color: S.muted }}>Смета: {fmt(sec.budget)} ₽</span>}
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
+                            {[
+                              { label: 'Материалы', value: secInvoices, color: S.yellow },
+                              { label: 'ФОТ', value: secFOT, color: S.accent },
+                              { label: 'Итого', value: secTotal, color: S.text },
+                              { label: 'Остаток', value: secLeft, color: secLeft >= 0 ? S.green : S.accent },
+                            ].map((k,i) => (
+                              <div key={i} style={{ background: S.bg, borderRadius: 4, padding: '4px 6px' }}>
+                                <div style={{ fontSize: 8, color: S.muted, textTransform: 'uppercase' }}>{k.label}</div>
+                                <div style={{ fontSize: 11, fontWeight: 700, color: k.color }}>{fmt(k.value)} ₽</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
                 {Object.keys(objSections).length > 0 && (
                   <div style={{ marginBottom: 12 }}>
-                    <div style={{ fontSize: 11, color: S.muted, textTransform: 'uppercase', marginBottom: 6 }}>По разделам счетов</div>
-                    {Object.entries(objSections).sort((a,b) => b[1]-a[1]).map(([sec, amt]) => (
+                    <div style={{ fontSize: 11, color: S.muted, textTransform: 'uppercase', marginBottom: 6 }}>Счета без привязки к разделу</div>
+                    {Object.entries(objSections).filter(([sec]) => sec === 'Без раздела' || !o.sections.find(s => `${s.code} — ${s.name}` === sec)).sort((a,b) => b[1]-a[1]).map(([sec, amt]) => (
                       <div key={sec} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: `1px solid ${S.faint}` }}>
-                        <span style={{ fontSize: 12, color: S.text }}>📂 {sec}</span>
-                        <span style={{ fontSize: 12, color: S.yellow, fontWeight: 700 }}>{fmt(amt)} ₽</span>
+                        <span style={{ fontSize: 12, color: S.muted }}>📂 {sec}</span>
+                        <span style={{ fontSize: 12, color: S.yellow }}>{fmt(amt)} ₽</span>
                       </div>
                     ))}
                   </div>
@@ -2838,6 +2936,106 @@ function AuditLog() {
           </div>
           <div style={{ fontSize: 11, color: S.muted, flexShrink: 0, marginLeft: 12 }}>
             {new Date(log.created_at).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── РАЗДЕЛЫ ОБЪЕКТА ──────────────────────────────────────────────────────────
+function ObjectSections({ object }) {
+  const [sections, setSections] = useState([]);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ code: '', name: '', budget: '' });
+
+  useEffect(() => { fetchSections(); }, []);
+
+  async function fetchSections() {
+    const { data } = await supabase.from('object_sections')
+      .select('*').eq('object_id', object.id).order('created_at');
+    setSections(data || []);
+  }
+
+  async function addSection() {
+    if (!form.code.trim() || !form.name.trim()) return;
+    await supabase.from('object_sections').insert([{
+      object_id: object.id,
+      code: form.code.trim().toUpperCase(),
+      name: form.name.trim(),
+      budget: +form.budget || 0,
+    }]);
+    setForm({ code: '', name: '', budget: '' });
+    setShowForm(false);
+    fetchSections();
+  }
+
+  async function deleteSection(id) {
+    if (!window.confirm('Удалить раздел? Все записи табеля и счета потеряют привязку к нему.')) return;
+    await supabase.from('object_sections').delete().eq('id', id);
+    fetchSections();
+  }
+
+  const fmt = v => new Intl.NumberFormat('ru-RU').format(v);
+  const totalBudget = sections.reduce((s, sec) => s + (sec.budget || 0), 0);
+
+  return (
+    <div style={{ borderTop: `1px solid ${S.border}`, background: '#0d111788', padding: '16px 18px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: S.text }}>Разделы сметы</div>
+          {sections.length > 0 && (
+            <div style={{ fontSize: 11, color: S.yellow, marginTop: 2 }}>
+              Итого по смете: {fmt(totalBudget)} ₽
+            </div>
+          )}
+        </div>
+        <button onClick={() => setShowForm(!showForm)}
+          style={{ ...btnStyle(S.yellow), fontSize: 12, padding: '6px 12px' }}>
+          + Добавить раздел
+        </button>
+      </div>
+
+      {showForm && (
+        <div style={{ background: S.panel, borderRadius: 10, border: `1px solid ${S.border}`, padding: 16, marginBottom: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1fr', gap: 8 }}>
+            <Field label="Код (аббр.)">
+              <input value={form.code} onChange={e => setForm({ ...form, code: e.target.value })}
+                placeholder='ОВ' style={inp} maxLength={6} />
+            </Field>
+            <Field label="Название раздела *">
+              <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
+                placeholder='Отопление и вентиляция' style={inp} />
+            </Field>
+            <Field label="Сумма по смете (₽)">
+              <input type="number" value={form.budget} onChange={e => setForm({ ...form, budget: e.target.value })}
+                placeholder='500000' style={inp} />
+            </Field>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={addSection} style={btnStyle(S.green)}>Сохранить</button>
+            <button onClick={() => setShowForm(false)} style={btnStyle(S.faint)}>Отмена</button>
+          </div>
+        </div>
+      )}
+
+      {sections.length === 0 && !showForm && (
+        <div style={{ textAlign: 'center', padding: 20, color: S.muted, fontSize: 13 }}>
+          Разделов нет. Добавьте разделы сметы для этого объекта.
+        </div>
+      )}
+
+      {sections.map(sec => (
+        <div key={sec.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: `1px solid ${S.faint}` }}>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <span style={{ background: S.faint, color: S.yellow, borderRadius: 6, padding: '3px 8px', fontSize: 12, fontWeight: 800, fontFamily: 'monospace' }}>{sec.code}</span>
+            <span style={{ fontSize: 13, color: S.text }}>{sec.name}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {sec.budget > 0 && (
+              <span style={{ fontSize: 13, color: S.yellow, fontWeight: 700 }}>{fmt(sec.budget)} ₽</span>
+            )}
+            <DelBtn onClick={() => deleteSection(sec.id)} />
           </div>
         </div>
       ))}
