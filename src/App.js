@@ -2127,21 +2127,45 @@ function FinanceReport({ objects }) {
       </div>
 
       {/* Итого */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12, marginBottom: 20 }}>
-        {[
-          { label: '🧾 Расходы по счетам', value: totalMaterials, sub: `${invoices.length} счетов`, color: S.yellow },
-          { label: '👷 ФОТ', value: totalFOT, sub: `${timesheet.filter(t => t.status === 'worked').length} записей`, color: S.accent },
-          { label: '📊 Итого расходов', value: totalAll, sub: 'материалы + ФОТ', color: S.green },
-        ].map((k, i) => (
-          <div key={i} style={{ background: S.panel, borderRadius: 12, border: `1px solid ${S.border}`, padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <div style={{ fontSize: 12, color: S.muted, marginBottom: 4 }}>{k.label}</div>
-              <div style={{ fontSize: 10, color: S.muted }}>{k.sub}</div>
-            </div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: k.color }}>{fmt(k.value)} ₽</div>
+      {(() => {
+        const totalBudgetMat = allSections.filter(s => !filter.object_id || s.object_id === filter.object_id).reduce((s,sec) => s+(sec.budget_mat||0), 0);
+        const totalBudgetFOT = allSections.filter(s => !filter.object_id || s.object_id === filter.object_id).reduce((s,sec) => s+(sec.budget_fot||0), 0);
+        const totalBudget = totalBudgetMat + totalBudgetFOT;
+        const pctMat = totalBudgetMat > 0 ? Math.round(totalMaterials / totalBudgetMat * 100) : null;
+        const pctFOT = totalBudgetFOT > 0 ? Math.round(totalFOT / totalBudgetFOT * 100) : null;
+        const pctAll = totalBudget > 0 ? Math.round(totalAll / totalBudget * 100) : null;
+        return (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12, marginBottom: 20 }}>
+            {[
+              { label: '🧾 Расходы по счетам', value: totalMaterials, budget: totalBudgetMat, pct: pctMat, sub: `${invoices.length} счетов`, color: S.yellow },
+              { label: '👷 ФОТ', value: totalFOT, budget: totalBudgetFOT, pct: pctFOT, sub: `${timesheet.filter(t => t.status === 'worked').length} записей`, color: S.accent },
+              { label: '📊 Итого расходов', value: totalAll, budget: totalBudget, pct: pctAll, sub: 'материалы + ФОТ', color: S.green },
+            ].map((k, i) => (
+              <div key={i} style={{ background: S.panel, borderRadius: 12, border: `1px solid ${S.border}`, padding: '16px 20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <div style={{ fontSize: 12, color: S.muted, marginBottom: 4 }}>{k.label}</div>
+                    <div style={{ fontSize: 10, color: S.muted }}>{k.sub}</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: 22, fontWeight: 800, color: k.color }}>{fmt(k.value)} ₽</div>
+                    {k.budget > 0 && (
+                      <div style={{ fontSize: 11, color: S.muted, marginTop: 2 }}>
+                        из {fmt(k.budget)} ₽ · <span style={{ color: k.pct > 100 ? S.accent : k.pct > 75 ? S.yellow : S.green, fontWeight: 700 }}>{k.pct}%</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {k.budget > 0 && (
+                  <div style={{ marginTop: 8, background: S.faint, borderRadius: 4, height: 4, overflow: 'hidden' }}>
+                    <div style={{ width: `${Math.min(k.pct, 100)}%`, height: '100%', background: k.pct > 100 ? S.accent : k.pct > 75 ? S.yellow : S.green, borderRadius: 4 }} />
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        );
+      })()}
 
       {/* По разделам счетов */}
       {Object.keys(bySection).length > 0 && (
@@ -2156,18 +2180,7 @@ function FinanceReport({ objects }) {
         </div>
       )}
 
-      {/* По подразделениям ФОТ */}
-      {Object.keys(byDept).length > 0 && (
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: S.text, marginBottom: 10 }}>👷 ФОТ по подразделениям</div>
-          {Object.entries(byDept).sort((a,b) => b[1]-a[1]).map(([dept, amt]) => (
-            <div key={dept} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 14px', background: S.panel, borderRadius: 8, marginBottom: 4, border: `1px solid ${S.border}` }}>
-              <span style={{ fontSize: 13, color: S.text }}>🏢 {dept}</span>
-              <span style={{ fontSize: 13, fontWeight: 700, color: S.accent }}>{fmt(amt)} ₽</span>
-            </div>
-          ))}
-        </div>
-      )}
+
 
       {/* По объектам с раскрытием */}
       <div style={{ fontSize: 13, fontWeight: 700, color: S.text, marginBottom: 10 }}>🏗 По объектам</div>
@@ -2226,13 +2239,14 @@ function FinanceReport({ objects }) {
                               { label: 'Итого', value: secTotal, budget: sec.budget, color: S.text },
                             ].map((k,i) => {
                               const left = (k.budget||0) - k.value;
+                              const pct = k.budget > 0 ? Math.round(k.value / k.budget * 100) : null;
                               return (
                                 <div key={i} style={{ background: S.bg, borderRadius: 4, padding: '4px 6px' }}>
                                   <div style={{ fontSize: 8, color: S.muted, textTransform: 'uppercase' }}>{k.label}</div>
                                   <div style={{ fontSize: 11, fontWeight: 700, color: k.color }}>{fmt(k.value)} ₽</div>
                                   {k.budget > 0 && (
-                                    <div style={{ fontSize: 9, color: left >= 0 ? S.green : S.accent }}>
-                                      {left >= 0 ? `↓ ${fmt(left)}` : `↑ ${fmt(Math.abs(left))}`} ₽
+                                    <div style={{ fontSize: 9, color: pct > 100 ? S.accent : pct > 75 ? S.yellow : S.green }}>
+                                      {pct}% {left >= 0 ? `(↓${fmt(left)})` : `(↑${fmt(Math.abs(left))})`}
                                     </div>
                                   )}
                                 </div>
