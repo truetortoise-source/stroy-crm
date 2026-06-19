@@ -1317,10 +1317,14 @@ function WorktimeReport({ objects, employees }) {
 }
 // ─── ПЕРЕМЕЩЕНИЯ ───────────────────────────────────────────────────────────────
 function MovementsTab({ objects, linkedUsers, userProfile }) {
+  const isAdmin = userProfile?.role === 'admin';
   const [movements, setMovements] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [filter, setFilter] = useState({ from: '', to: '', type: '', from_date: '', to_date: '' });
   const [uploading, setUploading] = useState(false);
+  const [editId, setEditId] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [editUploading, setEditUploading] = useState(false);
   const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 10), from_object_id: '', to_object_id: '', type: 'material', note: '', author: userProfile?.name || '', receiver_id: '', file_url: '' });
 
   useEffect(() => { fetchMovements(); }, []);
@@ -1347,6 +1351,19 @@ function MovementsTab({ objects, linkedUsers, userProfile }) {
   async function deleteMovement(id) {
     if (!window.confirm('Удалить перемещение?')) return;
     await supabase.from('movements').delete().eq('id', id);
+    fetchMovements();
+  }
+
+  async function saveMovementEdit(id) {
+    await supabase.from('movements').update({
+      date: editForm.date,
+      from_object_id: editForm.from_object_id || null,
+      to_object_id: editForm.to_object_id || null,
+      type: editForm.type,
+      note: editForm.note,
+      file_url: editForm.file_url || null,
+    }).eq('id', id);
+    setEditId(null);
     fetchMovements();
   }
 
@@ -1436,6 +1453,34 @@ function MovementsTab({ objects, linkedUsers, userProfile }) {
 
       {filtered.map(m => (
         <div key={m.id} style={{ background: S.panel, borderRadius: 12, border: `1px solid ${S.border}`, padding: '14px 16px', marginBottom: 10, borderLeft: `3px solid ${m.type === 'tool' ? S.blue : S.yellow}` }}>
+          {editId === m.id ? (
+            <div>
+              <Field label="Дата"><input type="date" value={editForm.date} onChange={e => setEditForm({ ...editForm, date: e.target.value })} style={inp} /></Field>
+              {[{ label: 'Откуда', key: 'from_object_id' }, { label: 'Куда', key: 'to_object_id' }].map(f => (
+                <Field key={f.key} label={f.label}>
+                  <select value={editForm[f.key] || ''} onChange={e => setEditForm({ ...editForm, [f.key]: e.target.value })} style={sel}>
+                    <option value=''>Склад / Поставщик</option>
+                    {objects.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                  </select>
+                </Field>
+              ))}
+              <Field label="Тип">
+                <select value={editForm.type} onChange={e => setEditForm({ ...editForm, type: e.target.value })} style={sel}>
+                  <option value='material'>Материал</option>
+                  <option value='tool'>Инструмент</option>
+                </select>
+              </Field>
+              <Field label="Описание"><input value={editForm.note} onChange={e => setEditForm({ ...editForm, note: e.target.value })} style={inp} /></Field>
+              <Field label="Фото или файл">
+                <FileUpload onUpload={url => setEditForm({ ...editForm, file_url: url })} uploading={editUploading} setUploading={setEditUploading} />
+                <FilePreview url={editForm.file_url} onRemove={() => setEditForm({ ...editForm, file_url: '' })} />
+              </Field>
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <button onClick={() => saveMovementEdit(m.id)} style={{ ...btnStyle(S.green), fontSize: 12 }}>Сохранить</button>
+                <button onClick={() => setEditId(null)} style={{ ...btnStyle(S.faint), fontSize: 12 }}>Отмена</button>
+              </div>
+            </div>
+          ) : (
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: S.text, marginBottom: 4 }}>{m.type === 'tool' ? '🔧' : '📦'} {m.note || '—'}</div>
@@ -1448,7 +1493,7 @@ function MovementsTab({ objects, linkedUsers, userProfile }) {
                 <div style={{ fontSize: 11, color: S.green, fontWeight: 600 }}>
                   ✅ Получено: {m.received_by} · {new Date(m.received_at).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                 </div>
-              ) : m.receiver_id && (
+              ) : m.receiver_id && m.receiver_id === userProfile?.id && (
                 <button onClick={() => confirmReceived(m.id)}
                   style={{ ...btnStyle(S.yellow), fontSize: 11, padding: '4px 10px', marginTop: 4 }}>
                   ✍️ Подтвердить получение
@@ -1456,8 +1501,11 @@ function MovementsTab({ objects, linkedUsers, userProfile }) {
               )}
               <FilePreview url={m.file_url} />
             </div>
-            <DelBtn onClick={() => deleteMovement(m.id)} />
+            <button onClick={() => { setEditId(m.id); setEditForm({ date: m.date, from_object_id: m.from_object_id || '', to_object_id: m.to_object_id || '', type: m.type, note: m.note || '', file_url: m.file_url || '' }); }}
+              style={{ background: 'none', border: `1px solid ${S.faint}`, color: S.muted, borderRadius: 6, padding: '4px 8px', fontSize: 12, cursor: 'pointer' }}>✏️</button>
+            {isAdmin && <DelBtn onClick={() => deleteMovement(m.id)} />}
           </div>
+          )}
         </div>
       ))}
       {filtered.length === 0 && <div style={{ textAlign: 'center', padding: 40, color: S.muted }}>Нет перемещений</div>}
